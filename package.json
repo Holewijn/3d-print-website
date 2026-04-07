@@ -1,26 +1,16 @@
 {
-  "name": "adminportal",
-  "version": "2.1.0",
-  "description": "Self-hosted admin dashboard — Proxmox LXC · Node.js · SQLite · JWT",
-  "main": "server.js",
+  "name": "3d-print-website",
+  "version": "1.0.0",
+  "private": true,
+  "engines": { "node": ">=20.0.0" },
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "install:all": "pnpm install --recursive",
+    "build": "pnpm --filter ./frontend build && pnpm --filter ./admin build && pnpm --filter ./backend build",
+    "start": "node backend/dist/server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:seed": "node prisma/seed.js"
   },
-  "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^9.4.3",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.18.3",
-    "express-rate-limit": "^7.2.0",
-    "helmet": "^7.1.0",
-    "jsonwebtoken": "^9.0.2",
-    "morgan": "^1.10.0",
-    "multer": "^2.0.0",
-    "uuid": "^9.0.1"
-  },
-  "engines": {
-    "node": ">=20.0.0"
-  }
+  "devDependencies": { "prisma": "^5.20.0" },
+  "dependencies": { "@prisma/client": "^5.20.0" }
 }

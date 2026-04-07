@@ -1,26 +1,18 @@
 module.exports = {
   apps: [
     {
-      name: 'adminportal',
-      script: 'server.js',
-      cwd: '/opt/adminportal',
+      name: "print3d",
+      cwd: "/opt/print3d",
+      script: "backend/dist/server.js",
       instances: 1,
-      autorestart: true,
+      exec_mode: "fork",
       watch: false,
-      max_memory_restart: '256M',
-      env: {
-        NODE_ENV: 'production',
-        PORT: 3000,
-      },
-      // Log configuration
-      out_file: '/var/log/adminportal/out.log',
-      error_file: '/var/log/adminportal/error.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      max_memory_restart: "1G",
+      env: { NODE_ENV: "production" },
+      error_file: "/var/log/print3d/error.log",
+      out_file: "/var/log/print3d/out.log",
       merge_logs: true,
-      // Graceful restart
-      kill_timeout: 5000,
-      wait_ready: false,
-      listen_timeout: 10000,
+      time: true
     }
   ]
 };

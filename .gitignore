@@ -1,7 +1,11 @@
-node_modules/
-data/
-uploads/
-.env
+node_modules
+.pnpm-store
+dist
+.next
+out
 *.log
+.env
+.env.local
+uploads/
+backups/
 .DS_Store
-npm-debug.log*

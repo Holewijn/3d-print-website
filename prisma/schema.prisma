@@ -1,0 +1,201 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  role          Role     @default(CUSTOMER)
+  firstName     String?
+  lastName      String?
+  phone         String?
+  addressLine1  String?
+  addressLine2  String?
+  city          String?
+  postalCode    String?
+  country       String?  @default("NL")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  orders        Order[]
+  quotes        Quote[]
+  stlUploads    StlUpload[]
+}
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+model Page {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  title     String
+  content   Json
+  seoTitle  String?
+  seoDesc   String?
+  published Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Setting {
+  key   String @id
+  value Json
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String
+  priceCents  Int
+  stock       Int      @default(0)
+  images      Json
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  orderItems  OrderItem[]
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  userId          String?
+  user            User?       @relation(fields: [userId], references: [id])
+  email           String
+  status          OrderStatus @default(PENDING)
+  totalCents      Int
+  currency        String      @default("EUR")
+  molliePaymentId String?     @unique
+  shippingName    String?
+  shippingAddr    Json?
+  items           OrderItem[]
+  quoteId         String?     @unique
+  quote           Quote?      @relation(fields: [quoteId], references: [id])
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  IN_PRODUCTION
+  SHIPPED
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+model OrderItem {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId  String?
+  product    Product? @relation(fields: [productId], references: [id])
+  name       String
+  priceCents Int
+  qty        Int
+}
+
+model Quote {
+  id                String      @id @default(cuid())
+  userId            String?
+  user              User?       @relation(fields: [userId], references: [id])
+  email             String
+  stlUploadId       String
+  stlUpload         StlUpload   @relation(fields: [stlUploadId], references: [id])
+  material          String
+  filamentBrandId   String?
+  filamentBrand     FilamentBrand? @relation(fields: [filamentBrandId], references: [id])
+  infillPct         Int         @default(20)
+  layerHeightMm     Float       @default(0.2)
+  volumeCm3         Float?
+  weightG           Float?
+  printMinutes      Int?
+  energyKwh         Float?
+  materialCostCents Int?
+  energyCostCents   Int?
+  machineCostCents  Int?
+  marginCents       Int?
+  totalCents        Int?
+  status            QuoteStatus @default(NEW)
+  adminNote         String?
+  order             Order?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+}
+
+enum QuoteStatus {
+  NEW
+  PRICED
+  APPROVED
+  REJECTED
+  CONVERTED
+}
+
+model StlUpload {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  filename   String
+  storedPath String
+  sizeBytes  Int
+  sha256     String
+  createdAt  DateTime @default(now())
+  quotes     Quote[]
+}
+
+model FilamentBrand {
+  id              String   @id @default(cuid())
+  name            String
+  material        String
+  colorHex        String?
+  pricePerKgCents Int
+  densityGcm3     Float    @default(1.24)
+  whereToBuyUrl   String?
+  stockGrams      Int      @default(0)
+  active          Boolean  @default(true)
+  quotes          Quote[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Printer {
+  id               String    @id @default(cuid())
+  name             String
+  moonrakerUrl     String
+  apiKey           String?
+  costPerHourCents Int       @default(0)
+  active           Boolean   @default(true)
+  lastStatus       Json?
+  lastSeenAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  subject   String?
+  message   String
+  handled   Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model PageView {
+  id        String   @id @default(cuid())
+  path      String
+  referrer  String?
+  ua        String?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([path])
+  @@index([createdAt])
+}
