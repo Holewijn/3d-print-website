@@ -1,11 +1,12 @@
 import "./globals.css";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
+import { getPage } from "../lib/getPage";
 
-export const metadata = {
-  title: "3D Print Studio — Professional 3D Printing Services",
-  description: "Custom 3D printing services. Upload your STL, get an instant quote, and we'll print it for you.",
-};
+export async function generateMetadata() {
+  const page = await getPage("home");
+  return { title: page?.seoTitle || "3D Print Studio", description: page?.seoDesc || "Custom 3D printing services" };
+}
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 module.exports = {
-  output: "export",
+  reactStrictMode: true,
   images: { unoptimized: true },
-  trailingSlash: true
+  // SSR mode (no static export). Backend proxies / → 127.0.0.1:3001
 };
