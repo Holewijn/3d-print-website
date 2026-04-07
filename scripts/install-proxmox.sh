@@ -16,7 +16,7 @@ BRIDGE="${BRIDGE:-vmbr0}"
 NET_CONFIG="${NET_CONFIG:-name=eth0,bridge=${BRIDGE},ip=dhcp}"
 UNPRIVILEGED="${UNPRIVILEGED:-1}"
 NESTING="${NESTING:-1}"
-OS_TEMPLATE="${OS_TEMPLATE:-debian-12-standard_12.12-1_amd64.tar.zst}"
+OS_TEMPLATE="debian-12-standard_12.12-1_amd64.tar.zst"
 
 GIT_REPO_URL="${GIT_REPO_URL:-https://github.com/Holewijn/3d-print-website.git}"
 GIT_BRANCH="${GIT_BRANCH:-main}"
