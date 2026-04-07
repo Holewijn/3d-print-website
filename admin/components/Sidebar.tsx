@@ -20,6 +20,7 @@ const NAV = [
       { href: "/inventory/", label: "Inventory", icon: "◉" },
       { href: "/shipping/", label: "Shipping", icon: "✈" },
       { href: "/contact/", label: "Messages", icon: "✉" },
+      { href: "/contact-form/", label: "Contact Form", icon: "▤" },
     ],
   },
   {
