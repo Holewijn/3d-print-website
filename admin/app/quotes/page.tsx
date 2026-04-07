@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Shell from "../../components/Shell";
 import { api, fmtMoney, fmtDate } from "../../lib/api";
+import StlViewer from "../../components/StlViewer";
 
 const STATUSES = ["NEW", "PRICED", "APPROVED", "REJECTED", "CONVERTED"];
 
@@ -16,7 +17,7 @@ export default function QuotesAdmin() {
   }
   useEffect(() => { load(); }, []);
 
-  const filtered = filter === "ALL" ? quotes : quotes.filter(q => q.status === filter);
+  const filtered = filter === "ALL" ? quotes : quotes.filter((q) => q.status === filter);
 
   async function update(id: string, body: any) {
     await api(`/quotes/${id}`, { method: "PUT", body: JSON.stringify(body) });
@@ -39,9 +40,9 @@ export default function QuotesAdmin() {
       <div className="panel">
         <div className="panel-head">
           <h3>Quotes ({filtered.length})</h3>
-          <select value={filter} onChange={e => setFilter(e.target.value)} style={{ width: "auto" }}>
+          <select value={filter} onChange={(e) => setFilter(e.target.value)} style={{ width: "auto" }}>
             <option value="ALL">All statuses</option>
-            {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         {filtered.length === 0 ? (
@@ -50,7 +51,7 @@ export default function QuotesAdmin() {
           <table>
             <thead><tr><th>ID</th><th>Customer</th><th>Material</th><th>Weight</th><th>Total</th><th>Status</th><th>Date</th><th></th></tr></thead>
             <tbody>
-              {filtered.map(q => (
+              {filtered.map((q) => (
                 <tr key={q.id}>
                   <td>#{q.id.slice(-8)}</td>
                   <td>{q.email}</td>
@@ -73,7 +74,7 @@ export default function QuotesAdmin() {
         <QuoteEditor
           quote={viewing}
           onClose={() => setViewing(null)}
-          onUpdate={(body) => update(viewing.id, body).then(() => setViewing({ ...viewing, ...body }))}
+          onUpdate={(body: any) => update(viewing.id, body).then(() => setViewing({ ...viewing, ...body }))}
           onConvert={() => convert(viewing.id)}
           onDownload={() => downloadStl(viewing.stlUploadId)}
         />
@@ -89,9 +90,14 @@ function QuoteEditor({ quote, onClose, onUpdate, onConvert, onDownload }: any) {
 
   return (
     <div className="modal-bg" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: 800 }} onClick={(e) => e.stopPropagation()}>
         <h3>Quote #{quote.id.slice(-8)}</h3>
         <p style={{ color: "var(--text-muted)", marginBottom: "1.25rem" }}>{quote.email} · {fmtDate(quote.createdAt)}</p>
+
+        {/* STL Viewer */}
+        <div style={{ marginBottom: "1.5rem" }}>
+          <StlViewer stlUploadId={quote.stlUploadId} height={320} />
+        </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "1.5rem" }}>
           <Stat label="Material" value={quote.material} />
@@ -105,17 +111,17 @@ function QuoteEditor({ quote, onClose, onUpdate, onConvert, onDownload }: any) {
         <div className="form">
           <div>
             <label>Total Price (cents)</label>
-            <input type="number" value={totalCents} onChange={e => setTotalCents(+e.target.value)} />
+            <input type="number" value={totalCents} onChange={(e) => setTotalCents(+e.target.value)} />
             <div className="help">Currently: {fmtMoney(totalCents)}</div>
           </div>
           <div>
             <label>Admin Note</label>
-            <textarea rows={2} value={adminNote} onChange={e => setAdminNote(e.target.value)} />
+            <textarea rows={2} value={adminNote} onChange={(e) => setAdminNote(e.target.value)} />
           </div>
           <div>
             <label>Status</label>
-            <select value={status} onChange={e => setStatus(e.target.value)}>
-              {["NEW", "PRICED", "APPROVED", "REJECTED", "CONVERTED"].map(s => <option key={s} value={s}>{s}</option>)}
+            <select value={status} onChange={(e) => setStatus(e.target.value)}>
+              {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div style={{ display: "flex", gap: "0.5rem", justifyContent: "space-between", flexWrap: "wrap" }}>

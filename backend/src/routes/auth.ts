@@ -8,13 +8,32 @@ import { requireAuth, AuthedRequest } from "../middleware/auth";
 export const authRouter = Router();
 const COOKIE = process.env.SESSION_COOKIE_NAME || "p3d_session";
 
+// Backfill helper — links any guest orders/quotes with this email to the user.
+async function linkPastForUser(userId: string, email: string) {
+  const lower = email.toLowerCase().trim();
+  try {
+    await prisma.order.updateMany({
+      where: { userId: null, email: { equals: lower, mode: "insensitive" } },
+      data: { userId },
+    });
+    await prisma.quote.updateMany({
+      where: { userId: null, email: { equals: lower, mode: "insensitive" } },
+      data: { userId },
+    });
+  } catch (e) {
+    console.error("[auth] backfill failed", e);
+  }
+}
+
 authRouter.post("/register", async (req, res) => {
   const schema = z.object({ email: z.string().email(), password: z.string().min(8) });
   const data = schema.parse(req.body);
-  const exists = await prisma.user.findUnique({ where: { email: data.email } });
+  const email = data.email.toLowerCase().trim();
+  const exists = await prisma.user.findUnique({ where: { email } });
   if (exists) return res.status(409).json({ error: "Email already used" });
   const passwordHash = await bcrypt.hash(data.password, 12);
-  const user = await prisma.user.create({ data: { email: data.email, passwordHash } });
+  const user = await prisma.user.create({ data: { email, passwordHash } });
+  await linkPastForUser(user.id, email);
   const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET!, { expiresIn: "7d" });
   res.cookie(COOKIE, token, { httpOnly: true, sameSite: "lax", maxAge: 7 * 86400000 });
   res.json({ id: user.id, email: user.email, role: user.role });
@@ -23,10 +42,12 @@ authRouter.post("/register", async (req, res) => {
 authRouter.post("/login", async (req, res) => {
   const schema = z.object({ email: z.string().email(), password: z.string() });
   const data = schema.parse(req.body);
-  const user = await prisma.user.findUnique({ where: { email: data.email } });
+  const email = data.email.toLowerCase().trim();
+  const user = await prisma.user.findUnique({ where: { email } });
   if (!user) return res.status(401).json({ error: "Invalid credentials" });
   const ok = await bcrypt.compare(data.password, user.passwordHash);
   if (!ok) return res.status(401).json({ error: "Invalid credentials" });
+  await linkPastForUser(user.id, email);
   const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET!, { expiresIn: "7d" });
   res.cookie(COOKIE, token, { httpOnly: true, sameSite: "lax", maxAge: 7 * 86400000 });
   res.json({ id: user.id, email: user.email, role: user.role });

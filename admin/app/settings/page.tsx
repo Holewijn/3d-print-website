@@ -154,9 +154,10 @@ export default function SettingsPage() {
         {tab === "pricing" && (
           <div className="form">
             <div><label>Profit Margin (%)</label><input type="number" value={s["pricing.marginPct"] ?? 25} onChange={(e) => set("pricing.marginPct", +e.target.value)} /></div>
+                        <div><label>Setup Fee (cents)</label><input type="number" value={s["pricing.setupFeeCents"] ?? 0} onChange={(e) => set("pricing.setupFeeCents", +e.target.value)} /><div className="help">Fixed fee added to every quote (e.g. 250 = €2.50). Set to 0 to disable.</div></div>
             <div><label>Default Machine Cost (cents/hour)</label><input type="number" value={s["pricing.defaultMachineCostHourCents"] ?? 200} onChange={(e) => set("pricing.defaultMachineCostHourCents", +e.target.value)} /></div>
             <div><label>Minimum Order (cents)</label><input type="number" value={s["pricing.minOrderCents"] ?? 500} onChange={(e) => set("pricing.minOrderCents", +e.target.value)} /></div>
-            <SaveBar keys={["pricing.marginPct","pricing.defaultMachineCostHourCents","pricing.minOrderCents"]} />
+            <SaveBar keys={["pricing.marginPct","pricing.setupFeeCents","pricing.defaultMachineCostHourCents","pricing.minOrderCents"]} />
           </div>
         )}
 

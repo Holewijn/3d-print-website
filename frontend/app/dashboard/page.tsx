@@ -1,12 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
+import StlViewer from "../../components/StlViewer";
 
 export default function Dashboard() {
   const [me, setMe] = useState<any>(null);
   const [orders, setOrders] = useState<any[]>([]);
   const [quotes, setQuotes] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
+  const [viewingQuote, setViewingQuote] = useState<any>(null);
 
   useEffect(() => {
     api("/auth/me").then(setMe).catch(() => { window.location.href = "/login/"; });
@@ -17,7 +19,6 @@ export default function Dashboard() {
 
   if (!me) return <section><div className="container"><p>Loading…</p></div></section>;
 
-  // Map invoices by orderId for quick lookup
   const invoiceByOrder: Record<string, any> = {};
   for (const inv of invoices) invoiceByOrder[inv.orderId] = inv;
 
@@ -50,9 +51,7 @@ export default function Dashboard() {
                     </div>
                     <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
                       <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--primary)" }}>€{(o.totalCents / 100).toFixed(2)}</div>
-                      {inv && (
-                        <a href={`/api/invoices/${inv.id}/pdf`} target="_blank" className="btn btn-outline" style={{ padding: "0.5rem 1rem", fontSize: "0.85rem" }}>↓ Invoice</a>
-                      )}
+                      {inv && <a href={`/api/invoices/${inv.id}/pdf`} target="_blank" className="btn btn-outline" style={{ padding: "0.5rem 1rem", fontSize: "0.85rem" }}>↓ Invoice</a>}
                     </div>
                   </div>
                 );
@@ -64,18 +63,41 @@ export default function Dashboard() {
           {quotes.length === 0 ? <p style={{ color: "var(--text-muted)" }}>No quotes yet.</p> : (
             <div>
               {quotes.map((q) => (
-                <div key={q.id} className="card" style={{ marginBottom: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div key={q.id} className="card" style={{ marginBottom: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem" }}>
                   <div>
                     <div style={{ fontWeight: 700 }}>Quote #{q.id.slice(-8)}</div>
                     <div style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>{q.material} · {q.weightG}g · {q.status}</div>
                   </div>
-                  <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--primary)" }}>€{((q.totalCents || 0) / 100).toFixed(2)}</div>
+                  <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+                    <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--primary)" }}>€{((q.totalCents || 0) / 100).toFixed(2)}</div>
+                    <button className="btn btn-outline" style={{ padding: "0.5rem 1rem", fontSize: "0.85rem" }} onClick={() => setViewingQuote(q)}>View 3D</button>
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </div>
       </section>
+
+      {viewingQuote && (
+        <div onClick={() => setViewingQuote(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "grid", placeItems: "center", zIndex: 100, padding: "1rem" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 12, padding: "1.5rem", maxWidth: 720, width: "100%" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+              <h3 style={{ fontSize: "1.1rem" }}>Quote #{viewingQuote.id.slice(-8)}</h3>
+              <button onClick={() => setViewingQuote(null)} style={{ background: "none", border: "none", fontSize: "1.5rem", cursor: "pointer" }}>×</button>
+            </div>
+            <StlViewer stlUploadId={viewingQuote.stlUploadId} height={400} />
+            <div style={{ marginTop: "1rem", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.5rem", fontSize: "0.85rem" }}>
+              <div><strong>Volume:</strong> {viewingQuote.volumeCm3} cm³</div>
+              <div><strong>Weight:</strong> {viewingQuote.weightG}g</div>
+              <div><strong>Material:</strong> {viewingQuote.material}</div>
+              <div><strong>Time:</strong> {Math.floor(viewingQuote.printMinutes / 60)}h {viewingQuote.printMinutes % 60}m</div>
+              <div><strong>Status:</strong> {viewingQuote.status}</div>
+              <div><strong>Total:</strong> €{((viewingQuote.totalCents || 0) / 100).toFixed(2)}</div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

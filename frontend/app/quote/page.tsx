@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { api } from "../../lib/api";
+import StlViewer from "../../components/StlViewer";
 
 export default function QuotePage() {
   const [file, setFile] = useState<File | null>(null);
@@ -10,29 +11,37 @@ export default function QuotePage() {
   const [layer, setLayer] = useState(0.2);
   const [brands, setBrands] = useState<any[]>([]);
   const [brandId, setBrandId] = useState("");
+  const [upload, setUpload] = useState<any>(null);
   const [quote, setQuote] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
   useEffect(() => { api("/inventory/brands").then(setBrands).catch(() => {}); }, []);
 
+  // Auto-upload as soon as a file is picked, so the viewer can show
+  useEffect(() => {
+    if (!file) return;
+    setQuote(null); setUpload(null); setErr("");
+    const fd = new FormData();
+    fd.append("file", file);
+    fetch("/api/stl/upload", { method: "POST", body: fd, credentials: "include" })
+      .then((r) => r.ok ? r.json() : Promise.reject(new Error("Upload failed")))
+      .then(setUpload)
+      .catch((e) => setErr(e.message));
+  }, [file]);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!file) return;
-    setBusy(true); setErr(""); setQuote(null);
+    if (!upload) return;
+    setBusy(true); setErr("");
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const upRes = await fetch("/api/stl/upload", { method: "POST", body: fd, credentials: "include" });
-      if (!upRes.ok) throw new Error("Upload failed");
-      const upl = await upRes.json();
       const q = await api("/quotes", {
         method: "POST",
         body: JSON.stringify({
-          stlUploadId: upl.id, email, material,
+          stlUploadId: upload.id, email, material,
           filamentBrandId: brandId || null,
-          infillPct: infill, layerHeightMm: layer
-        })
+          infillPct: infill, layerHeightMm: layer,
+        }),
       });
       setQuote(q);
     } catch (e: any) { setErr(e.message); }
@@ -44,7 +53,7 @@ export default function QuotePage() {
       <div className="page-header">
         <div className="container">
           <h1>Get an Instant Quote</h1>
-          <p>Upload your STL file and we'll calculate material, print time, and total cost in seconds.</p>
+          <p>Upload your STL file and we'll calculate material, print time, and total cost.</p>
         </div>
       </div>
 
@@ -54,65 +63,57 @@ export default function QuotePage() {
             <form onSubmit={submit}>
               <div>
                 <label>STL File</label>
-                <input type="file" accept=".stl" onChange={e => setFile(e.target.files?.[0] || null)} required />
+                <input type="file" accept=".stl" onChange={(e) => setFile(e.target.files?.[0] || null)} required />
               </div>
               <div>
                 <label>Email Address</label>
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" required />
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required />
               </div>
               <div className="form-row">
                 <div>
                   <label>Material</label>
-                  <select value={material} onChange={e => setMaterial(e.target.value)}>
+                  <select value={material} onChange={(e) => setMaterial(e.target.value)}>
                     <option>PLA</option><option>PETG</option><option>ABS</option><option>TPU</option>
                   </select>
                 </div>
                 <div>
                   <label>Filament Brand</label>
-                  <select value={brandId} onChange={e => setBrandId(e.target.value)}>
+                  <select value={brandId} onChange={(e) => setBrandId(e.target.value)}>
                     <option value="">Default</option>
-                    {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
                 </div>
               </div>
               <div className="form-row">
                 <div>
                   <label>Infill (%)</label>
-                  <input type="number" min={0} max={100} value={infill} onChange={e => setInfill(+e.target.value)} />
+                  <input type="number" min={0} max={100} value={infill} onChange={(e) => setInfill(+e.target.value)} />
                 </div>
                 <div>
                   <label>Layer Height (mm)</label>
-                  <input type="number" step={0.05} min={0.05} max={0.4} value={layer} onChange={e => setLayer(+e.target.value)} />
+                  <input type="number" step={0.05} min={0.05} max={0.4} value={layer} onChange={(e) => setLayer(+e.target.value)} />
                 </div>
               </div>
-              <button className="btn btn-lg" disabled={busy}>{busy ? "Calculating…" : "Calculate Quote →"}</button>
+              <button className="btn btn-lg" disabled={busy || !upload}>{busy ? "Calculating…" : "Calculate Quote →"}</button>
               {err && <div className="error">{err}</div>}
             </form>
           </div>
 
           <div>
-            <h3 style={{ fontSize: "1.5rem", marginBottom: "1rem" }}>What you get</h3>
-            <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "1rem" }}>
-              <li style={{ display: "flex", gap: "0.75rem" }}>
-                <span style={{ color: "var(--primary)", fontWeight: 800 }}>✓</span>
-                <div><strong>Instant pricing</strong><br /><span style={{ color: "var(--text-muted)" }}>Material, energy, and machine time calculated in real-time.</span></div>
-              </li>
-              <li style={{ display: "flex", gap: "0.75rem" }}>
-                <span style={{ color: "var(--primary)", fontWeight: 800 }}>✓</span>
-                <div><strong>No commitment</strong><br /><span style={{ color: "var(--text-muted)" }}>Get a quote first, decide later.</span></div>
-              </li>
-              <li style={{ display: "flex", gap: "0.75rem" }}>
-                <span style={{ color: "var(--primary)", fontWeight: 800 }}>✓</span>
-                <div><strong>Multiple materials</strong><br /><span style={{ color: "var(--text-muted)" }}>PLA, PETG, ABS, TPU and more.</span></div>
-              </li>
-              <li style={{ display: "flex", gap: "0.75rem" }}>
-                <span style={{ color: "var(--primary)", fontWeight: 800 }}>✓</span>
-                <div><strong>Fast turnaround</strong><br /><span style={{ color: "var(--text-muted)" }}>Most orders shipped within 3 business days.</span></div>
-              </li>
-            </ul>
+            {upload ? (
+              <>
+                <h3 style={{ fontSize: "1.1rem", marginBottom: "0.75rem" }}>3D Preview</h3>
+                <StlViewer stlUploadId={upload.id} height={360} />
+              </>
+            ) : (
+              <div style={{ background: "var(--bg-soft)", border: "2px dashed var(--border)", borderRadius: 8, padding: "3rem 1rem", textAlign: "center", color: "var(--text-muted)" }}>
+                <div style={{ fontSize: "3rem", marginBottom: "0.5rem" }}>▲</div>
+                <p>Upload an STL file to see a 3D preview</p>
+              </div>
+            )}
 
             {quote && (
-              <div className="quote-result">
+              <div className="quote-result" style={{ marginTop: "1.5rem" }}>
                 <h3>Your Quote</h3>
                 <div className="quote-stats">
                   <div className="quote-stat"><div className="label">Volume</div><div className="value">{quote.volumeCm3} cm³</div></div>

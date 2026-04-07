@@ -7,6 +7,13 @@ import { getEnergyPriceCentsKwh } from "../services/energy";
 
 export const quotesRouter = Router();
 
+// ─── Helper: find user by email and return id, or null ───
+async function findUserIdByEmail(email: string | undefined | null): Promise<string | null> {
+  if (!email) return null;
+  const u = await prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
+  return u?.id || null;
+}
+
 quotesRouter.post("/", async (req: AuthedRequest, res) => {
   const { stlUploadId, email, material, filamentBrandId, infillPct, layerHeightMm } = req.body;
   const upl = await prisma.stlUpload.findUnique({ where: { id: stlUploadId } });
@@ -21,6 +28,8 @@ quotesRouter.post("/", async (req: AuthedRequest, res) => {
   const energyCents = await getEnergyPriceCentsKwh();
   const marginPct = await getSetting<number>("pricing.marginPct", 25);
   const machineCostHour = await getSetting<number>("pricing.defaultMachineCostHourCents", 200);
+  const setupFeeCents = await getSetting<number>("pricing.setupFeeCents", 0);
+  const minOrderCents = await getSetting<number>("pricing.minOrderCents", 500);
 
   const result = calculatePrice({
     volumeCm3,
@@ -32,12 +41,17 @@ quotesRouter.post("/", async (req: AuthedRequest, res) => {
     printerWattage: 150,
     machineCostPerHourCents: machineCostHour,
     marginPct,
-    printSpeedMmS: 60
+    printSpeedMmS: 60,
+    setupFeeCents,
+    minOrderCents,
   });
+
+  // Auto-link to existing user if logged in OR matching email exists
+  const userId = req.user?.id || (await findUserIdByEmail(email));
 
   const quote = await prisma.quote.create({
     data: {
-      userId: req.user?.id || null,
+      userId,
       email: email || req.user?.email || "",
       stlUploadId,
       material: material || brand?.material || "PLA",
@@ -45,8 +59,8 @@ quotesRouter.post("/", async (req: AuthedRequest, res) => {
       infillPct: infillPct ?? 20,
       layerHeightMm: layerHeightMm ?? 0.2,
       ...result,
-      status: "PRICED"
-    }
+      status: "PRICED",
+    },
   });
   res.json(quote);
 });
@@ -75,9 +89,10 @@ quotesRouter.post("/:id/convert-to-order", requireAuth, requireAdmin, async (req
       userId: q.userId,
       email: q.email,
       totalCents: q.totalCents,
+      subtotalCents: q.totalCents,
       quoteId: q.id,
-      items: { create: [{ name: `Print quote ${q.id}`, priceCents: q.totalCents, qty: 1 }] }
-    }
+      items: { create: [{ name: `Print quote ${q.id}`, priceCents: q.totalCents, qty: 1 }] },
+    },
   });
   await prisma.quote.update({ where: { id: q.id }, data: { status: "CONVERTED" } });
   res.json(order);
