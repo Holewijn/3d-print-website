@@ -27,7 +27,10 @@ model User {
   stlUploads    StlUpload[]
 }
 
-enum Role { CUSTOMER ADMIN }
+enum Role {
+  CUSTOMER
+  ADMIN
+}
 
 model Page {
   id        String   @id @default(cuid())
@@ -85,7 +88,15 @@ model Order {
   updatedAt       DateTime    @updatedAt
 }
 
-enum OrderStatus { PENDING PAID IN_PRODUCTION SHIPPED COMPLETED CANCELLED REFUNDED }
+enum OrderStatus {
+  PENDING
+  PAID
+  IN_PRODUCTION
+  SHIPPED
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
 
 model OrderItem {
   id         String   @id @default(cuid())
@@ -126,7 +137,13 @@ model Quote {
   updatedAt         DateTime       @updatedAt
 }
 
-enum QuoteStatus { NEW PRICED APPROVED REJECTED CONVERTED }
+enum QuoteStatus {
+  NEW
+  PRICED
+  APPROVED
+  REJECTED
+  CONVERTED
+}
 
 model StlUpload {
   id         String   @id @default(cuid())
@@ -185,6 +202,7 @@ model PageView {
   ua        String?
   ip        String?
   createdAt DateTime @default(now())
+
   @@index([path])
   @@index([createdAt])
 }
@@ -215,9 +233,13 @@ model ShippingRate {
   updatedAt      DateTime     @updatedAt
 }
 
-enum RateType { FLAT FREE FREE_OVER WEIGHT }
+enum RateType {
+  FLAT
+  FREE
+  FREE_OVER
+  WEIGHT
+}
 
-// ─── Invoices ──────────────────────────────────────────
 model Invoice {
   id              String    @id @default(cuid())
   number          String    @unique
@@ -250,5 +272,6 @@ model Invoice {
   pdfPath         String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+
   @@index([year, sequence])
 }
