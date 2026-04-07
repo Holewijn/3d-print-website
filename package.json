@@ -1,7 +1,7 @@
 {
   "name": "adminportal",
   "version": "2.1.0",
-  "description": "Self-hosted admin dashboard",
+  "description": "Self-hosted admin dashboard — Proxmox LXC · Node.js · SQLite · JWT",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -17,8 +17,10 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
-    "multer": "^1.4.5-lts.1",
-    "sql.js": "^1.14.1",
+    "multer": "^2.0.0",
     "uuid": "^9.0.1"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }
