@@ -1,6 +1,8 @@
 import "./globals.css";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
+import CartDrawer from "../components/CartDrawer";
+import { CartProvider } from "../lib/cart";
 import { getPage } from "../lib/getPage";
 
 export async function generateMetadata() {
@@ -12,9 +14,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <Header />
-        {children}
-        <Footer />
+        <CartProvider>
+          <Header />
+          {children}
+          <Footer />
+          <CartDrawer />
+        </CartProvider>
       </body>
     </html>
   );

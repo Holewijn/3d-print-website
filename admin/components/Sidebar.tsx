@@ -3,10 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const NAV = [
-  {
-    section: null,
-    items: [{ href: "/", label: "Dashboard", icon: "▤" }],
-  },
+  { section: null, items: [{ href: "/", label: "Dashboard", icon: "▤" }] },
   {
     section: "Content",
     items: [
@@ -21,6 +18,7 @@ const NAV = [
     items: [
       { href: "/printers/", label: "Printers", icon: "▲" },
       { href: "/inventory/", label: "Inventory", icon: "◉" },
+      { href: "/shipping/", label: "Shipping", icon: "✈" },
       { href: "/contact/", label: "Messages", icon: "✉" },
     ],
   },
@@ -49,9 +47,7 @@ export default function Sidebar() {
           <div className="ver">Admin v1.0</div>
         </div>
       </div>
-      <div className="sidebar-search">
-        <input placeholder="Search menu…" />
-      </div>
+      <div className="sidebar-search"><input placeholder="Search menu…" /></div>
       {NAV.map((group, gi) => (
         <div key={gi}>
           {group.section && <div className="sidebar-section">{group.section}</div>}

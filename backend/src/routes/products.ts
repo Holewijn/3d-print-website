@@ -4,8 +4,25 @@ import { requireAuth, requireAdmin } from "../middleware/auth";
 
 export const productsRouter = Router();
 
-productsRouter.get("/", async (_req, res) => {
-  res.json(await prisma.product.findMany({ where: { active: true } }));
+productsRouter.get("/", async (req, res) => {
+  const where: any = { active: true };
+  if (req.query.category) where.category = req.query.category;
+  if (req.query.search) {
+    where.OR = [
+      { name: { contains: req.query.search as string, mode: "insensitive" } },
+      { description: { contains: req.query.search as string, mode: "insensitive" } },
+    ];
+  }
+  res.json(await prisma.product.findMany({ where, orderBy: { createdAt: "desc" } }));
+});
+
+productsRouter.get("/categories", async (_req, res) => {
+  const cats = await prisma.product.findMany({
+    where: { active: true, category: { not: null } },
+    select: { category: true },
+    distinct: ["category"],
+  });
+  res.json(cats.map((c) => c.category).filter(Boolean));
 });
 
 productsRouter.get("/:slug", async (req, res) => {

@@ -1,47 +1,78 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { api } from "../../lib/api";
-
-const DEMO_PRODUCTS = [
-  { id: "d1", name: "Articulated Dragon", description: "Fully posable print-in-place dragon", priceCents: 1995, image: "https://images.unsplash.com/photo-1635002962487-2c1d4d2f63c2?w=400&q=80" },
-  { id: "d2", name: "Geometric Vase", description: "Modern low-poly desk vase", priceCents: 1495, image: "https://images.unsplash.com/photo-1602874801006-94e1b3aa4b46?w=400&q=80" },
-  { id: "d3", name: "Phone Stand", description: "Adjustable desk phone stand", priceCents: 995, image: "https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?w=400&q=80" },
-  { id: "d4", name: "Cable Organizer", description: "Set of 6 cable management clips", priceCents: 795, image: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=80" },
-];
+import { useCart } from "../../lib/cart";
 
 export default function Webshop() {
   const [products, setProducts] = useState<any[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [category, setCategory] = useState("");
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const { add } = useCart();
 
   useEffect(() => {
-    api("/products")
-      .then(p => setProducts(p.length ? p : DEMO_PRODUCTS))
-      .catch(() => setProducts(DEMO_PRODUCTS))
-      .finally(() => setLoading(false));
+    api("/products/categories").then(setCategories).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (category) params.set("category", category);
+    if (search) params.set("search", search);
+    api(`/products?${params}`).then(setProducts).catch(() => setProducts([])).finally(() => setLoading(false));
+  }, [category, search]);
+
+  function quickAdd(p: any) {
+    add({
+      productId: p.id, slug: p.slug, name: p.name,
+      priceCents: p.priceCents, weightG: p.weightG || 100,
+      image: p.images?.[0] || "",
+      qty: 1,
+    });
+  }
 
   return (
     <>
       <div className="page-header">
         <div className="container">
           <h1>Shop</h1>
-          <p>Ready-to-buy 3D printed products from our studio.</p>
+          <p>3D printed products from our studio.</p>
         </div>
       </div>
+
       <section>
         <div className="container">
-          {loading ? <p>Loading…</p> : (
+          <div style={{ display: "flex", gap: "1rem", marginBottom: "2rem", flexWrap: "wrap" }}>
+            <input
+              placeholder="Search products…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ flex: 1, minWidth: 200, padding: "0.75rem 1rem", border: "1.5px solid var(--border)", borderRadius: 8 }}
+            />
+            <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ padding: "0.75rem 1rem", border: "1.5px solid var(--border)", borderRadius: 8, minWidth: 180 }}>
+              <option value="">All categories</option>
+              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+
+          {loading ? <p>Loading…</p> : products.length === 0 ? (
+            <p style={{ color: "var(--text-muted)", textAlign: "center", padding: "3rem" }}>No products found.</p>
+          ) : (
             <div className="grid grid-4">
-              {products.map(p => (
+              {products.map((p) => (
                 <div className="product-card" key={p.id}>
-                  <div className="img">
-                    <img src={p.image || (p.images?.[0]) || "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=80"} alt={p.name} />
-                  </div>
+                  <Link href={`/webshop/${p.slug}/`}>
+                    <div className="img"><img src={p.images?.[0] || ""} alt={p.name} /></div>
+                  </Link>
                   <div className="body">
-                    <h3>{p.name}</h3>
-                    <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>{p.description}</p>
+                    <Link href={`/webshop/${p.slug}/`}><h3>{p.name}</h3></Link>
+                    <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", margin: "0.25rem 0 0.5rem", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{p.description}</p>
                     <div className="price">€{(p.priceCents / 100).toFixed(2)}</div>
-                    <button className="btn" style={{ width: "100%" }}>Add to Cart</button>
+                    <button className="btn" style={{ width: "100%" }} onClick={() => quickAdd(p)} disabled={p.stock === 0}>
+                      {p.stock === 0 ? "Out of stock" : "Add to Cart"}
+                    </button>
                   </div>
                 </div>
               ))}

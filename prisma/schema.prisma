@@ -55,8 +55,10 @@ model Product {
   name        String
   description String
   priceCents  Int
+  weightG     Int      @default(100)
   stock       Int      @default(0)
   images      Json
+  category    String?
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -69,11 +71,15 @@ model Order {
   user            User?       @relation(fields: [userId], references: [id])
   email           String
   status          OrderStatus @default(PENDING)
+  subtotalCents   Int         @default(0)
+  shippingCents   Int         @default(0)
   totalCents      Int
   currency        String      @default("EUR")
   molliePaymentId String?     @unique
   shippingName    String?
+  shippingPhone   String?
   shippingAddr    Json?
+  shippingMethod  String?
   items           OrderItem[]
   quoteId         String?     @unique
   quote           Quote?      @relation(fields: [quoteId], references: [id])
@@ -198,4 +204,38 @@ model PageView {
 
   @@index([path])
   @@index([createdAt])
+}
+
+// ─── Shipping ──────────────────────────────────────────
+model ShippingZone {
+  id           String          @id @default(cuid())
+  name         String
+  countries    Json            // array of ISO codes: ["NL","BE"]
+  sortOrder    Int             @default(0)
+  active       Boolean         @default(true)
+  rates        ShippingRate[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+}
+
+model ShippingRate {
+  id            String       @id @default(cuid())
+  zoneId        String
+  zone          ShippingZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  name          String       // "PostNL Standard"
+  type          RateType     @default(FLAT)
+  costCents     Int          @default(0)         // FLAT cost or per-kg cost (for WEIGHT)
+  freeAboveCents Int?                            // FREE_OVER threshold
+  minOrderCents Int?                             // optional minimum
+  sortOrder     Int          @default(0)
+  active        Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+enum RateType {
+  FLAT          // fixed cost
+  FREE          // always free
+  FREE_OVER     // free when subtotal >= freeAboveCents, otherwise costCents
+  WEIGHT        // costCents per kg, rounded up
 }

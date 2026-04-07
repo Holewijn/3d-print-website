@@ -4,47 +4,74 @@ import { createMolliePayment, getMolliePayment } from "../services/mollie";
 
 export const paymentsRouter = Router();
 
+// ─── Create payment for an order ──────────────────────
 paymentsRouter.post("/create/:orderId", async (req, res) => {
-  const order = await prisma.order.findUnique({ where: { id: req.params.orderId } });
+  const order = await prisma.order.findUnique({
+    where: { id: req.params.orderId },
+    include: { items: true },
+  });
   if (!order) return res.status(404).json({ error: "Order not found" });
+  if (order.status !== "PENDING") return res.status(400).json({ error: "Order already processed" });
 
   const base = process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`;
-  const payment = await createMolliePayment({
-    amountCents: order.totalCents,
-    description: `Order ${order.id}`,
-    orderId: order.id,
-    redirectUrl: `${base}/order/${order.id}/thanks`,
-    webhookUrl: `${base}/api/payments/webhook`
-  });
-  await prisma.order.update({
-    where: { id: order.id },
-    data: { molliePaymentId: payment.id }
-  });
-  res.json({ checkoutUrl: payment._links?.checkout?.href, paymentId: payment.id });
+  try {
+    const payment = await createMolliePayment({
+      amountCents: order.totalCents,
+      description: `Order ${order.id.slice(-8)}`,
+      orderId: order.id,
+      redirectUrl: `${base}/order/${order.id}/thanks`,
+      webhookUrl: `${base}/api/payments/webhook`,
+    });
+    await prisma.order.update({
+      where: { id: order.id },
+      data: { molliePaymentId: payment.id },
+    });
+    res.json({ checkoutUrl: payment._links?.checkout?.href, paymentId: payment.id });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
+// ─── Mollie webhook ───────────────────────────────────
 paymentsRouter.post("/webhook", async (req, res) => {
   const id = req.body?.id;
   if (!id) return res.status(400).send("missing id");
   try {
     const payment = await getMolliePayment(id);
-    const order = await prisma.order.findUnique({ where: { molliePaymentId: id } });
+    const order = await prisma.order.findUnique({
+      where: { molliePaymentId: id },
+      include: { items: true, quote: true },
+    });
     if (!order) return res.status(404).send("no order");
 
-    let status = order.status;
-    if (payment.status === "paid") status = "PAID";
-    else if (payment.status === "canceled" || payment.status === "expired" || payment.status === "failed") status = "CANCELLED";
+    let newStatus = order.status;
+    if (payment.status === "paid") newStatus = "PAID";
+    else if (["canceled", "expired", "failed"].includes(payment.status)) newStatus = "CANCELLED";
 
-    await prisma.order.update({ where: { id: order.id }, data: { status } });
+    // Only act on transitions
+    if (newStatus !== order.status) {
+      await prisma.order.update({ where: { id: order.id }, data: { status: newStatus } });
 
-    // Auto-deduct filament if PAID and order has a quote
-    if (status === "PAID" && order.quoteId) {
-      const q = await prisma.quote.findUnique({ where: { id: order.quoteId } });
-      if (q?.filamentBrandId && q.weightG) {
-        await prisma.filamentBrand.update({
-          where: { id: q.filamentBrandId },
-          data: { stockGrams: { decrement: Math.ceil(q.weightG) } }
-        });
+      if (newStatus === "PAID") {
+        // Decrement product stock for webshop items
+        for (const item of order.items) {
+          if (item.productId) {
+            await prisma.product.update({
+              where: { id: item.productId },
+              data: { stock: { decrement: item.qty } },
+            });
+          }
+        }
+        // Decrement filament stock if order has a linked quote
+        if (order.quoteId) {
+          const q = await prisma.quote.findUnique({ where: { id: order.quoteId } });
+          if (q?.filamentBrandId && q.weightG) {
+            await prisma.filamentBrand.update({
+              where: { id: q.filamentBrandId },
+              data: { stockGrams: { decrement: Math.ceil(q.weightG) } },
+            });
+          }
+        }
       }
     }
 
