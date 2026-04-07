@@ -24,6 +24,7 @@ import { contactRouter } from "./routes/contact";
 import { statsRouter } from "./routes/stats";
 import { adminRouter } from "./routes/admin";
 import { shippingRouter } from "./routes/shipping";
+import { invoicesRouter } from "./routes/invoices";
 import { startMoonrakerWorker } from "./workers/moonraker";
 
 const app = express();
@@ -35,7 +36,6 @@ const APP_DIR = process.env.APP_DIR || path.resolve(__dirname, "../..");
 app.set("trust proxy", 1);
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: true, credentials: true }));
-
 app.use("/api", express.json({ limit: "10mb" }));
 app.use("/api", express.urlencoded({ extended: true }));
 app.use(cookieParser());
@@ -59,14 +59,13 @@ app.use("/api/contact", contactRouter);
 app.use("/api/stats", statsRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/shipping", shippingRouter);
+app.use("/api/invoices", invoicesRouter);
 app.get("/api/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
-// Admin SPA
 const ADMIN_DIST = path.resolve(APP_DIR, "admin/out");
 app.use("/admin", express.static(ADMIN_DIST));
 app.get("/admin/*", (_req, res) => res.sendFile(path.join(ADMIN_DIST, "index.html")));
 
-// Spawn Next.js child
 let nextChild: ChildProcess | null = null;
 function startNext() {
   const frontendDir = path.resolve(APP_DIR, "frontend");

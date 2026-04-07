@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { prisma } from "../db";
 import { createMolliePayment, getMolliePayment } from "../services/mollie";
+import { createInvoiceForOrder } from "../services/invoice";
+import { sendInvoiceEmail } from "../services/email";
 
 export const paymentsRouter = Router();
 
-// ─── Create payment for an order ──────────────────────
 paymentsRouter.post("/create/:orderId", async (req, res) => {
   const order = await prisma.order.findUnique({
     where: { id: req.params.orderId },
@@ -22,17 +23,13 @@ paymentsRouter.post("/create/:orderId", async (req, res) => {
       redirectUrl: `${base}/order/${order.id}/thanks`,
       webhookUrl: `${base}/api/payments/webhook`,
     });
-    await prisma.order.update({
-      where: { id: order.id },
-      data: { molliePaymentId: payment.id },
-    });
+    await prisma.order.update({ where: { id: order.id }, data: { molliePaymentId: payment.id } });
     res.json({ checkoutUrl: payment._links?.checkout?.href, paymentId: payment.id });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// ─── Mollie webhook ───────────────────────────────────
 paymentsRouter.post("/webhook", async (req, res) => {
   const id = req.body?.id;
   if (!id) return res.status(400).send("missing id");
@@ -48,12 +45,11 @@ paymentsRouter.post("/webhook", async (req, res) => {
     if (payment.status === "paid") newStatus = "PAID";
     else if (["canceled", "expired", "failed"].includes(payment.status)) newStatus = "CANCELLED";
 
-    // Only act on transitions
     if (newStatus !== order.status) {
       await prisma.order.update({ where: { id: order.id }, data: { status: newStatus } });
 
       if (newStatus === "PAID") {
-        // Decrement product stock for webshop items
+        // Decrement product stock
         for (const item of order.items) {
           if (item.productId) {
             await prisma.product.update({
@@ -62,7 +58,7 @@ paymentsRouter.post("/webhook", async (req, res) => {
             });
           }
         }
-        // Decrement filament stock if order has a linked quote
+        // Decrement filament if linked to a quote
         if (order.quoteId) {
           const q = await prisma.quote.findUnique({ where: { id: order.quoteId } });
           if (q?.filamentBrandId && q.weightG) {
@@ -71,6 +67,21 @@ paymentsRouter.post("/webhook", async (req, res) => {
               data: { stockGrams: { decrement: Math.ceil(q.weightG) } },
             });
           }
+        }
+
+        // ─── Auto-create invoice + email it ───
+        try {
+          const invoice = await createInvoiceForOrder(order.id);
+          await sendInvoiceEmail(invoice).then(async () => {
+            await prisma.invoice.update({
+              where: { id: invoice.id },
+              data: { emailSent: true, emailSentAt: new Date() },
+            });
+          }).catch((err) => {
+            console.error("[invoice] email failed (SMTP not configured?):", err.message);
+          });
+        } catch (err: any) {
+          console.error("[invoice] auto-create failed:", err.message);
         }
       }
     }

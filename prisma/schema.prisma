@@ -27,10 +27,7 @@ model User {
   stlUploads    StlUpload[]
 }
 
-enum Role {
-  CUSTOMER
-  ADMIN
-}
+enum Role { CUSTOMER ADMIN }
 
 model Page {
   id        String   @id @default(cuid())
@@ -81,21 +78,14 @@ model Order {
   shippingAddr    Json?
   shippingMethod  String?
   items           OrderItem[]
+  invoice         Invoice?
   quoteId         String?     @unique
   quote           Quote?      @relation(fields: [quoteId], references: [id])
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 }
 
-enum OrderStatus {
-  PENDING
-  PAID
-  IN_PRODUCTION
-  SHIPPED
-  COMPLETED
-  CANCELLED
-  REFUNDED
-}
+enum OrderStatus { PENDING PAID IN_PRODUCTION SHIPPED COMPLETED CANCELLED REFUNDED }
 
 model OrderItem {
   id         String   @id @default(cuid())
@@ -109,17 +99,17 @@ model OrderItem {
 }
 
 model Quote {
-  id                String      @id @default(cuid())
+  id                String         @id @default(cuid())
   userId            String?
-  user              User?       @relation(fields: [userId], references: [id])
+  user              User?          @relation(fields: [userId], references: [id])
   email             String
   stlUploadId       String
-  stlUpload         StlUpload   @relation(fields: [stlUploadId], references: [id])
+  stlUpload         StlUpload      @relation(fields: [stlUploadId], references: [id])
   material          String
   filamentBrandId   String?
   filamentBrand     FilamentBrand? @relation(fields: [filamentBrandId], references: [id])
-  infillPct         Int         @default(20)
-  layerHeightMm     Float       @default(0.2)
+  infillPct         Int            @default(20)
+  layerHeightMm     Float          @default(0.2)
   volumeCm3         Float?
   weightG           Float?
   printMinutes      Int?
@@ -129,20 +119,14 @@ model Quote {
   machineCostCents  Int?
   marginCents       Int?
   totalCents        Int?
-  status            QuoteStatus @default(NEW)
+  status            QuoteStatus    @default(NEW)
   adminNote         String?
   order             Order?
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 }
 
-enum QuoteStatus {
-  NEW
-  PRICED
-  APPROVED
-  REJECTED
-  CONVERTED
-}
+enum QuoteStatus { NEW PRICED APPROVED REJECTED CONVERTED }
 
 model StlUpload {
   id         String   @id @default(cuid())
@@ -201,41 +185,70 @@ model PageView {
   ua        String?
   ip        String?
   createdAt DateTime @default(now())
-
   @@index([path])
   @@index([createdAt])
 }
 
-// ─── Shipping ──────────────────────────────────────────
 model ShippingZone {
-  id           String          @id @default(cuid())
-  name         String
-  countries    Json            // array of ISO codes: ["NL","BE"]
-  sortOrder    Int             @default(0)
-  active       Boolean         @default(true)
-  rates        ShippingRate[]
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  id        String         @id @default(cuid())
+  name      String
+  countries Json
+  sortOrder Int            @default(0)
+  active    Boolean        @default(true)
+  rates     ShippingRate[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 }
 
 model ShippingRate {
-  id            String       @id @default(cuid())
-  zoneId        String
-  zone          ShippingZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
-  name          String       // "PostNL Standard"
-  type          RateType     @default(FLAT)
-  costCents     Int          @default(0)         // FLAT cost or per-kg cost (for WEIGHT)
-  freeAboveCents Int?                            // FREE_OVER threshold
-  minOrderCents Int?                             // optional minimum
-  sortOrder     Int          @default(0)
-  active        Boolean      @default(true)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id             String       @id @default(cuid())
+  zoneId         String
+  zone           ShippingZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  name           String
+  type           RateType     @default(FLAT)
+  costCents      Int          @default(0)
+  freeAboveCents Int?
+  minOrderCents  Int?
+  sortOrder      Int          @default(0)
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 }
 
-enum RateType {
-  FLAT          // fixed cost
-  FREE          // always free
-  FREE_OVER     // free when subtotal >= freeAboveCents, otherwise costCents
-  WEIGHT        // costCents per kg, rounded up
+enum RateType { FLAT FREE FREE_OVER WEIGHT }
+
+// ─── Invoices ──────────────────────────────────────────
+model Invoice {
+  id              String    @id @default(cuid())
+  number          String    @unique
+  year            Int
+  sequence        Int
+  orderId         String    @unique
+  order           Order     @relation(fields: [orderId], references: [id])
+  issuedAt        DateTime  @default(now())
+  dueAt           DateTime?
+  paidAt          DateTime?
+  companyName     String
+  companyAddress  Json
+  companyKvk      String?
+  companyBtw      String?
+  companyIban     String?
+  companyBic      String?
+  companyBank     String?
+  customerName    String
+  customerEmail   String
+  customerAddress Json
+  subtotalCents   Int
+  vatRate         Float
+  vatCents        Int
+  shippingCents   Int
+  totalCents      Int
+  lineItems       Json
+  notes           String?
+  emailSent       Boolean   @default(false)
+  emailSentAt     DateTime?
+  pdfPath         String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  @@index([year, sequence])
 }
