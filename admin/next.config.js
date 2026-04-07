@@ -1,7 +1,8 @@
 /** @type {import('next').NextConfig} */
 module.exports = {
   output: "export",
-  images: { unoptimized: true },
   basePath: "/admin",
+  assetPrefix: "/admin",
+  images: { unoptimized: true },
   trailingSlash: true
 };
