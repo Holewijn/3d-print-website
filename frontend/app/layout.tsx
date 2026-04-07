@@ -1,27 +1,19 @@
 import "./globals.css";
-import Link from "next/link";
+import Header from "../components/Header";
+import Footer from "../components/Footer";
 
-export const metadata = { title: "3D Print Studio" };
+export const metadata = {
+  title: "3D Print Studio — Professional 3D Printing Services",
+  description: "Custom 3D printing services. Upload your STL, get an instant quote, and we'll print it for you.",
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <header className="site-header">
-          <Link href="/" className="logo">3D Print Studio</Link>
-          <nav>
-            <Link href="/">Home</Link>
-            <Link href="/services/">Services</Link>
-            <Link href="/webshop/">Webshop</Link>
-            <Link href="/quote/">Quote</Link>
-            <Link href="/portfolio/">Portfolio</Link>
-            <Link href="/about/">About</Link>
-            <Link href="/contact/">Contact</Link>
-            <Link href="/login/">Login</Link>
-          </nav>
-        </header>
-        <main>{children}</main>
-        <footer className="site-footer">© 3D Print Studio</footer>
+        <Header />
+        {children}
+        <Footer />
       </body>
     </html>
   );

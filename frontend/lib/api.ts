@@ -1,9 +1,9 @@
-export async function api(path: string, opts: RequestInit = {}) {
+export async function api<T = any>(path: string, opts: RequestInit = {}): Promise<T> {
   const r = await fetch(`/api${path}`, {
-    ...opts,
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...(opts.headers || {}) }
+    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+    ...opts,
   });
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Request failed");
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
   return r.json();
 }
