@@ -401,7 +401,13 @@ function PricingTab() {
   useEffect(() => { load(); }, []);
 
   async function save(row: any) {
-    await api("/inventory/material-colors", { method: "POST", body: JSON.stringify(row) });
+    const body = {
+      materialId: row.materialId,
+      colorId: row.colorId,
+      listPriceKgCents: +row.listPriceKgCents,
+      lowStockGrams: +row.lowStockGrams,
+    };
+    await api("/inventory/material-colors", { method: "POST", body: JSON.stringify(body) });
     setEditing(null);
     load();
   }
@@ -494,11 +500,21 @@ function PricingTab() {
 function BrandsTab() {
   const [brands, setBrands] = useState<any[]>([]);
   const [editing, setEditing] = useState<any>(null);
+
   async function load() { setBrands(await api("/inventory/brands").catch(() => [])); }
   useEffect(() => { load(); }, []);
+
   async function save(b: any) {
-    if (b._isNew) await api("/inventory/brands", { method: "POST", body: JSON.stringify(b) });
-    else await api(`/inventory/brands/${b.id}`, { method: "PUT", body: JSON.stringify(b) });
+    const body = {
+      name: b.name,
+      websiteUrl: b.websiteUrl || null,
+      logoUrl: b.logoUrl || null,
+      supportEmail: b.supportEmail || null,
+      notes: b.notes || null,
+      active: b.active !== false,
+    };
+    if (b._isNew) await api("/inventory/brands", { method: "POST", body: JSON.stringify(body) });
+    else await api(`/inventory/brands/${b.id}`, { method: "PUT", body: JSON.stringify(body) });
     setEditing(null); load();
   }
   async function del(id: string) {
@@ -565,8 +581,17 @@ function MaterialsTab() {
   const [editing, setEditing] = useState<any>(null);
   async function load() { setItems(await api("/inventory/materials").catch(() => [])); }
   useEffect(() => { load(); }, []);
+
   async function save(m: any) {
-    const body = { name: m.name, densityGcm3: +m.densityGcm3, printTempC: m.printTempC ? +m.printTempC : null, bedTempC: m.bedTempC ? +m.bedTempC : null, abrasive: !!m.abrasive, notes: m.notes, active: m.active !== false };
+    const body = {
+      name: m.name,
+      densityGcm3: +m.densityGcm3,
+      printTempC: m.printTempC ? +m.printTempC : null,
+      bedTempC: m.bedTempC ? +m.bedTempC : null,
+      abrasive: !!m.abrasive,
+      notes: m.notes || null,
+      active: m.active !== false,
+    };
     if (m._isNew) await api("/inventory/materials", { method: "POST", body: JSON.stringify(body) });
     else await api(`/inventory/materials/${m.id}`, { method: "PUT", body: JSON.stringify(body) });
     setEditing(null); load();
@@ -632,8 +657,13 @@ function ColorsTab() {
   const [editing, setEditing] = useState<any>(null);
   async function load() { setItems(await api("/inventory/colors").catch(() => [])); }
   useEffect(() => { load(); }, []);
+
   async function save(c: any) {
-    const body = { name: c.name, hex: c.hex, swatchUrl: c.swatchUrl };
+    const body = {
+      name: c.name,
+      hex: c.hex || "#000000",
+      swatchUrl: c.swatchUrl || null,
+    };
     if (c._isNew) await api("/inventory/colors", { method: "POST", body: JSON.stringify(body) });
     else await api(`/inventory/colors/${c.id}`, { method: "PUT", body: JSON.stringify(body) });
     setEditing(null); load();

@@ -3,7 +3,6 @@ import { prisma } from "../db";
 import { createMolliePayment, getMolliePayment } from "../services/mollie";
 import { createInvoiceForOrder } from "../services/invoice";
 import { sendInvoiceEmail } from "../services/email";
-import { consumeFilament } from "../services/inventory";
 
 export const paymentsRouter = Router();
 
@@ -60,23 +59,9 @@ paymentsRouter.post("/webhook", async (req, res) => {
           }
         }
 
-        // Decrement filament via FIFO if linked to a quote with material + color
-        if (order.quoteId) {
-          const q = await prisma.quote.findUnique({ where: { id: order.quoteId } });
-          if (q?.materialId && q?.colorId && q?.weightG) {
-            try {
-              await consumeFilament({
-                materialId: q.materialId,
-                colorId: q.colorId,
-                grams: Math.ceil(q.weightG),
-                reason: "PRINT_USED",
-                note: `Order ${order.id.slice(-8)} paid`,
-              });
-            } catch (err: any) {
-              console.error("[payments] filament deduction failed:", err.message);
-            }
-          }
-        }
+        // NOTE: Filament deduction is handled by the Moonraker worker when
+        // the actual print finishes, not here. This avoids double-deducting
+        // when a paid order is printed and Moonraker reports usage.
 
         // Auto-create invoice + email
         try {
