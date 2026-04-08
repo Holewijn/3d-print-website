@@ -3,6 +3,7 @@ import { prisma } from "../db";
 import { createMolliePayment, getMolliePayment } from "../services/mollie";
 import { createInvoiceForOrder } from "../services/invoice";
 import { sendInvoiceEmail } from "../services/email";
+import { consumeFilament } from "../services/inventory";
 
 export const paymentsRouter = Router();
 
@@ -58,18 +59,26 @@ paymentsRouter.post("/webhook", async (req, res) => {
             });
           }
         }
-        // Decrement filament if linked to a quote
+
+        // Decrement filament via FIFO if linked to a quote with material + color
         if (order.quoteId) {
           const q = await prisma.quote.findUnique({ where: { id: order.quoteId } });
-          if (q?.filamentBrandId && q.weightG) {
-            await prisma.filamentBrand.update({
-              where: { id: q.filamentBrandId },
-              data: { stockGrams: { decrement: Math.ceil(q.weightG) } },
-            });
+          if (q?.materialId && q?.colorId && q?.weightG) {
+            try {
+              await consumeFilament({
+                materialId: q.materialId,
+                colorId: q.colorId,
+                grams: Math.ceil(q.weightG),
+                reason: "PRINT_USED",
+                note: `Order ${order.id.slice(-8)} paid`,
+              });
+            } catch (err: any) {
+              console.error("[payments] filament deduction failed:", err.message);
+            }
           }
         }
 
-        // ─── Auto-create invoice + email it ───
+        // Auto-create invoice + email
         try {
           const invoice = await createInvoiceForOrder(order.id);
           await sendInvoiceEmail(invoice).then(async () => {
