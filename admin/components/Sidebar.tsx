@@ -1,6 +1,8 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { api } from "../lib/api";
 
 const NAV = [
   { section: null, items: [{ href: "/", label: "Dashboard", icon: "▤" }] },
@@ -27,6 +29,7 @@ const NAV = [
   {
     section: "Configuration",
     items: [
+      { href: "/appearance/", label: "Appearance", icon: "✦" },
       { href: "/stats/", label: "Statistics", icon: "≡" },
       { href: "/settings/", label: "Settings", icon: "⚙" },
       { href: "/update/", label: "System Update", icon: "↻" },
@@ -36,17 +39,47 @@ const NAV = [
 
 export default function Sidebar() {
   const pathname = usePathname() || "/";
-  const isActive = (href: string) => {
-    if (href === "/") return pathname === "/" || pathname === "";
-    return pathname.startsWith(href);
-  };
+  const isActive = (href: string) =>
+    href === "/" ? pathname === "/" || pathname === "" : pathname.startsWith(href);
+
+  const [brand, setBrand] = useState<any>({
+    brandName: "Print Studio",
+    tagline: "Admin v1.0",
+    logoMark: "3D",
+    logoUrl: "",
+    primaryColor: "#3b82f6",
+  });
+
+  useEffect(() => {
+    api("/settings/public").then((s) => {
+      if (s["admin"]) {
+        const a = s["admin"];
+        setBrand((prev: any) => ({ ...prev, ...a }));
+        // Apply primary color globally
+        if (a.primaryColor) {
+          document.documentElement.style.setProperty("--primary", a.primaryColor);
+          document.documentElement.style.setProperty("--primary-dark", a.primaryColor);
+          // Make a translucent version for soft backgrounds
+          document.documentElement.style.setProperty(
+            "--primary-soft",
+            hexToRgba(a.primaryColor, 0.12)
+          );
+        }
+      }
+    }).catch(() => {});
+  }, []);
+
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        <div className="mark">3D</div>
+        {brand.logoUrl ? (
+          <img src={brand.logoUrl} alt={brand.brandName} style={{ height: 36, width: "auto" }} />
+        ) : (
+          <div className="mark">{brand.logoMark}</div>
+        )}
         <div>
-          <div className="name">Print Studio</div>
-          <div className="ver">Admin v1.0</div>
+          <div className="name">{brand.brandName}</div>
+          <div className="ver">{brand.tagline}</div>
         </div>
       </div>
       <div className="sidebar-search"><input placeholder="Search menu…" /></div>
@@ -66,4 +99,11 @@ export default function Sidebar() {
       <div className="sidebar-footer">← Collapse Menu</div>
     </aside>
   );
+}
+
+function hexToRgba(hex: string, alpha: number) {
+  const m = hex.replace("#", "").match(/.{1,2}/g);
+  if (!m) return `rgba(59,130,246,${alpha})`;
+  const [r, g, b] = m.map((h) => parseInt(h, 16));
+  return `rgba(${r},${g},${b},${alpha})`;
 }

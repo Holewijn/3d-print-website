@@ -1,38 +1,31 @@
-"use client";
 import Link from "next/link";
-import { useCart } from "../lib/cart";
+import { getPublicSettings, DEFAULT_HEADER, MenuItem } from "../lib/publicSettings";
+import CartButton from "./CartButton";
 
-export default function Header() {
-  const { count, open } = useCart();
+export default async function Header() {
+  const s = await getPublicSettings();
+  const h = { ...DEFAULT_HEADER, ...(s["header"] || {}) };
+  const menu: MenuItem[] = Array.isArray(h.menu) && h.menu.length ? h.menu : DEFAULT_HEADER.menu;
+
   return (
     <header className="site-header">
       <div className="container">
         <Link href="/" className="logo">
-          <span className="logo-mark">▲</span>
-          <span>3D Print Studio</span>
+          {h.logoType === "image" && h.logoUrl ? (
+            <img src={h.logoUrl} alt={h.logoText} style={{ height: 40, width: "auto" }} />
+          ) : (
+            <>
+              <span className="logo-mark">{h.logoMark || "▲"}</span>
+              <span>{h.logoText}</span>
+            </>
+          )}
         </Link>
         <nav className="nav">
-          <Link href="/">Home</Link>
-          <Link href="/services/">Services</Link>
-          <Link href="/webshop/">Shop</Link>
-          <Link href="/portfolio/">Portfolio</Link>
-          <Link href="/about/">About</Link>
-          <Link href="/contact/">Contact</Link>
-          <button onClick={open} aria-label="Open cart" style={{
-            position: "relative", background: "transparent", border: "1px solid var(--border)",
-            width: 42, height: 42, borderRadius: 8, cursor: "pointer", color: "var(--text)",
-            display: "grid", placeItems: "center", fontSize: "1.1rem",
-          }}>
-            ◴
-            {count > 0 && (
-              <span style={{
-                position: "absolute", top: -6, right: -6, background: "var(--primary)",
-                color: "#fff", borderRadius: 12, fontSize: "0.7rem", fontWeight: 700,
-                minWidth: 20, height: 20, display: "grid", placeItems: "center", padding: "0 5px",
-              }}>{count}</span>
-            )}
-          </button>
-          <Link href="/quote/" className="btn">Get a Quote</Link>
+          {menu.map((item, i) => (
+            <Link key={i} href={item.href}>{item.label}</Link>
+          ))}
+          {h.showCart !== false && <CartButton color={h.cartColor || ""} />}
+          {h.ctaText && <Link href={h.ctaHref || "/quote/"} className="btn">{h.ctaText}</Link>}
         </nav>
       </div>
     </header>
