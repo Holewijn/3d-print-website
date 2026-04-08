@@ -1,126 +1,740 @@
 "use client";
 import { useEffect, useState } from "react";
 import Shell from "../../components/Shell";
-import { api, fmtMoney } from "../../lib/api";
+import { api, fmtMoney, fmtDate } from "../../lib/api";
 
-export default function InventoryAdmin() {
-  const [brands, setBrands] = useState<any[]>([]);
-  const [editing, setEditing] = useState<any>(null);
+const TABS = [
+  { id: "dashboard",  label: "Dashboard" },
+  { id: "spools",     label: "Spools" },
+  { id: "pricing",    label: "Pricing & Thresholds" },
+  { id: "brands",     label: "Brands" },
+  { id: "materials",  label: "Materials" },
+  { id: "colors",     label: "Colors" },
+  { id: "movements",  label: "Movement History" },
+];
 
-  async function load() {
-    const list = await api("/inventory/brands").catch(() => []);
-    setBrands(list);
-  }
-  useEffect(() => { load(); }, []);
-
-  async function adjust(id: string, delta: number) {
-    await api(`/inventory/brands/${id}/adjust`, { method: "POST", body: JSON.stringify({ delta }) });
-    load();
-  }
-
+export default function InventoryPage() {
+  const [tab, setTab] = useState("dashboard");
   return (
-    <Shell title="Inventory" subtitle="Manage filament brands & stock">
-      <div className="panel">
-        <div className="panel-head">
-          <h3>Filament Brands ({brands.length})</h3>
-          <button className="btn" onClick={() => setEditing({ name: "", material: "PLA", colorHex: "#000000", pricePerKgCents: 2500, densityGcm3: 1.24, whereToBuyUrl: "", stockGrams: 0, active: true })}>+ New Brand</button>
+    <Shell title="Inventory" subtitle="Filament stock, pricing, and movement history">
+      <div className="panel" style={{ marginBottom: "1rem" }}>
+        <div style={{ display: "flex", gap: "1.25rem", borderBottom: "1px solid var(--border)", flexWrap: "wrap" }}>
+          {TABS.map((t) => (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              background: "transparent", border: "none",
+              color: tab === t.id ? "var(--primary)" : "var(--text-muted)",
+              padding: "0.75rem 0", fontWeight: 600, cursor: "pointer", fontSize: "0.88rem",
+              borderBottom: tab === t.id ? "2px solid var(--primary)" : "2px solid transparent",
+              marginBottom: "-1px",
+            }}>{t.label}</button>
+          ))}
         </div>
-        {brands.length === 0 ? (
-          <div className="empty"><div className="icon">◉</div><p>No filament brands configured.</p></div>
-        ) : (
-          <table>
-            <thead><tr><th>Brand</th><th>Material</th><th>Color</th><th>Price/kg</th><th>Stock</th><th>Where to Buy</th><th></th></tr></thead>
-            <tbody>
-              {brands.map(b => (
-                <tr key={b.id}>
-                  <td><strong>{b.name}</strong></td>
-                  <td>{b.material}</td>
-                  <td><span style={{ display: "inline-block", width: 16, height: 16, borderRadius: 4, background: b.colorHex || "#666", verticalAlign: "middle" }} /> {b.colorHex || "—"}</td>
-                  <td>{fmtMoney(b.pricePerKgCents)}</td>
-                  <td>
-                    <strong>{b.stockGrams}g</strong>
-                    <span style={{ marginLeft: "0.5rem" }}>
-                      <button className="btn btn-sm btn-outline" onClick={() => adjust(b.id, 1000)}>+1kg</button>{" "}
-                      <button className="btn btn-sm btn-outline" onClick={() => adjust(b.id, -100)}>−100g</button>
-                    </span>
-                  </td>
-                  <td>{b.whereToBuyUrl ? <a href={b.whereToBuyUrl} target="_blank" style={{ color: "var(--primary)" }}>Link →</a> : "—"}</td>
-                  <td style={{ textAlign: "right" }}>
-                    <button className="btn btn-sm btn-outline" onClick={() => setEditing(b)}>Edit</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
       </div>
 
-      {editing && <BrandEditor brand={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
+      {tab === "dashboard"  && <DashboardTab />}
+      {tab === "spools"     && <SpoolsTab />}
+      {tab === "pricing"    && <PricingTab />}
+      {tab === "brands"     && <BrandsTab />}
+      {tab === "materials"  && <MaterialsTab />}
+      {tab === "colors"     && <ColorsTab />}
+      {tab === "movements"  && <MovementsTab />}
     </Shell>
   );
 }
 
-function BrandEditor({ brand, onClose, onSaved }: any) {
-  const [f, setF] = useState({ ...brand });
+// ─── Dashboard ────────────────────────────────────────
+function DashboardTab() {
+  const [summary, setSummary] = useState<any[]>([]);
+  const [trends, setTrends] = useState<any>(null);
+
+  useEffect(() => {
+    api("/inventory/summary").then(setSummary).catch(() => {});
+    api("/inventory/trends?days=30").then(setTrends).catch(() => {});
+  }, []);
+
+  const lowStock = summary.filter((s) => s.isLow);
+  const maxBarG = Math.max(...(trends?.byDay || []).map((d: any) => d.grams), 1);
+
+  return (
+    <>
+      <div className="stats-grid" style={{ marginBottom: "1rem" }}>
+        <div className="stat-card"><div className="label">Combos in stock</div><div className="value">{summary.length}</div></div>
+        <div className="stat-card"><div className="label">Low-stock warnings</div><div className="value" style={{ color: lowStock.length > 0 ? "#ef4444" : "inherit" }}>{lowStock.length}</div></div>
+        <div className="stat-card"><div className="label">Used (30d)</div><div className="value">{trends?.totalUsedG || 0}g</div></div>
+        <div className="stat-card"><div className="label">Cost (30d)</div><div className="value">{fmtMoney(trends?.totalCostCents || 0)}</div></div>
+      </div>
+
+      <div className="panel" style={{ marginBottom: "1rem" }}>
+        <div className="panel-head"><h3>Stock by Material & Color</h3></div>
+        {summary.length === 0 ? (
+          <div className="empty"><p>No material+color combos configured. Go to <strong>Pricing & Thresholds</strong> to add some.</p></div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "0.75rem" }}>
+            {summary.map((s) => {
+              const pct = s.lowStockGrams ? Math.min(100, (s.totalGrams / (s.lowStockGrams * 3)) * 100) : 0;
+              return (
+                <div key={`${s.materialId}-${s.colorId}`} style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "1rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "0.5rem" }}>
+                    <div style={{ width: 18, height: 18, borderRadius: 4, background: s.colorHex, border: "1px solid var(--border)" }} />
+                    <strong>{s.materialName} {s.colorName}</strong>
+                    {s.isLow && <span className="badge badge-danger" style={{ marginLeft: "auto" }}>LOW</span>}
+                  </div>
+                  <div style={{ fontSize: "1.4rem", fontWeight: 800 }}>{s.totalGrams}<span style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginLeft: "0.3rem" }}>g</span></div>
+                  <div style={{ marginTop: "0.5rem", height: 6, background: "var(--bg-elev-2)", borderRadius: 3, overflow: "hidden" }}>
+                    <div style={{ width: `${pct}%`, height: "100%", background: s.isLow ? "#ef4444" : "var(--primary)" }} />
+                  </div>
+                  <div style={{ marginTop: "0.4rem", fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                    Threshold: {s.lowStockGrams}g · €{(s.listPriceKgCents / 100).toFixed(2)}/kg
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {trends?.byDay?.length > 0 && (
+        <div className="panel">
+          <div className="panel-head"><h3>Usage — Last 30 days</h3></div>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: "2px", height: 160, padding: "0.5rem 0" }}>
+            {trends.byDay.map((d: any) => (
+              <div key={d.date} title={`${d.date}: ${d.grams}g`} style={{
+                flex: 1,
+                height: `${(d.grams / maxBarG) * 100}%`,
+                background: "var(--primary)",
+                borderRadius: "2px 2px 0 0",
+                minHeight: 2,
+              }} />
+            ))}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.5rem" }}>
+            <span>{trends.byDay[0]?.date}</span>
+            <span>{trends.byDay[trends.byDay.length - 1]?.date}</span>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ─── Spools ───────────────────────────────────────────
+function SpoolsTab() {
+  const [spools, setSpools] = useState<any[]>([]);
+  const [brands, setBrands] = useState<any[]>([]);
+  const [materials, setMaterials] = useState<any[]>([]);
+  const [colors, setColors] = useState<any[]>([]);
+  const [printers, setPrinters] = useState<any[]>([]);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [editing, setEditing] = useState<any>(null);
+  const [adjusting, setAdjusting] = useState<any>(null);
+
+  async function load() {
+    const q = statusFilter ? `?status=${statusFilter}` : "";
+    setSpools(await api("/inventory/spools" + q).catch(() => []));
+    if (brands.length === 0) {
+      setBrands(await api("/inventory/brands").catch(() => []));
+      setMaterials(await api("/inventory/materials").catch(() => []));
+      setColors(await api("/inventory/colors").catch(() => []));
+      setPrinters(await api("/printers").catch(() => []));
+    }
+  }
+  useEffect(() => { load(); }, [statusFilter]);
+
+  async function dispose(id: string) {
+    if (!confirm("Dispose this spool? Remaining grams will be written off.")) return;
+    await api(`/inventory/spools/${id}/dispose`, { method: "POST", body: JSON.stringify({}) });
+    load();
+  }
+
+  async function loadOnPrinter(spoolId: string, printerId: string) {
+    if (!printerId) return;
+    await api(`/inventory/spools/${spoolId}/load`, { method: "POST", body: JSON.stringify({ printerId }) });
+    load();
+  }
+  async function unload(spoolId: string) {
+    await api(`/inventory/spools/${spoolId}/unload`, { method: "POST", body: JSON.stringify({}) });
+    load();
+  }
+
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h3>Spools ({spools.length})</h3>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ width: "auto" }}>
+            <option value="">All statuses</option>
+            <option value="IN_STOCK">In stock</option>
+            <option value="IN_USE">In use</option>
+            <option value="EMPTY">Empty</option>
+            <option value="DISPOSED">Disposed</option>
+          </select>
+          <button className="btn" onClick={() => setEditing({ _isNew: true, diameterMm: 1.75, initialGrams: 1000, pricePaidCents: 2000, purchaseDate: new Date().toISOString().slice(0, 10) })}>
+            + Add Spool
+          </button>
+        </div>
+      </div>
+      {spools.length === 0 ? (
+        <div className="empty"><div className="icon">◉</div><p>No spools yet. Add your first spool to start tracking.</p></div>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Brand / Material / Color</th>
+              <th>Remaining</th>
+              <th>Cost/kg</th>
+              <th>Purchased</th>
+              <th>Status</th>
+              <th>Printer</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {spools.map((s) => {
+              const pct = s.initialGrams ? (s.remainingGrams / s.initialGrams) * 100 : 0;
+              const costPerKg = s.initialGrams ? Math.round((s.pricePaidCents / s.initialGrams) * 1000) : 0;
+              return (
+                <tr key={s.id}>
+                  <td>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <div style={{ width: 14, height: 14, borderRadius: 3, background: s.color?.hex || "#ccc", border: "1px solid var(--border)" }} />
+                      <div>
+                        <strong>{s.brand?.name}</strong>{" "}
+                        <span style={{ color: "var(--text-muted)" }}>{s.material?.name} · {s.color?.name}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <div style={{ fontWeight: 700 }}>{s.remainingGrams}g <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>/ {s.initialGrams}g</span></div>
+                    <div style={{ width: 80, height: 4, background: "var(--bg-elev-2)", borderRadius: 2, marginTop: 3 }}>
+                      <div style={{ width: `${pct}%`, height: "100%", background: pct < 20 ? "#ef4444" : "var(--primary)", borderRadius: 2 }} />
+                    </div>
+                  </td>
+                  <td>{fmtMoney(costPerKg)}</td>
+                  <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{fmtDate(s.purchaseDate)}</td>
+                  <td><span className={`badge ${s.status === "IN_STOCK" || s.status === "IN_USE" ? "badge-success" : "badge-muted"}`}>{s.status}</span></td>
+                  <td>
+                    {s.loadedOnPrinter ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                        <strong style={{ fontSize: "0.82rem" }}>{s.loadedOnPrinter.name}</strong>
+                        <button className="btn btn-sm btn-outline" onClick={() => unload(s.id)}>×</button>
+                      </div>
+                    ) : s.status === "IN_STOCK" || s.status === "IN_USE" ? (
+                      <select onChange={(e) => loadOnPrinter(s.id, e.target.value)} defaultValue="" style={{ width: "auto", fontSize: "0.78rem" }}>
+                        <option value="">Load on…</option>
+                        {printers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    ) : "—"}
+                  </td>
+                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    <button className="btn btn-sm btn-outline" onClick={() => setAdjusting(s)}>Adjust</button>{" "}
+                    <button className="btn btn-sm btn-outline" onClick={() => setEditing(s)}>Edit</button>{" "}
+                    {s.status !== "DISPOSED" && <button className="btn btn-sm btn-danger" onClick={() => dispose(s.id)}>Dispose</button>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+
+      {editing && <SpoolEditor spool={editing} brands={brands} materials={materials} colors={colors} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
+      {adjusting && <AdjustModal spool={adjusting} onClose={() => setAdjusting(null)} onSaved={() => { setAdjusting(null); load(); }} />}
+    </div>
+  );
+}
+
+function SpoolEditor({ spool, brands, materials, colors, onClose, onSaved }: any) {
+  const [f, setF] = useState<any>({ ...spool });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const isNew = !brand.id;
+  const isNew = spool._isNew;
 
   async function save() {
     setBusy(true); setErr("");
     try {
       const body = {
-        name: f.name, material: f.material, colorHex: f.colorHex,
-        pricePerKgCents: +f.pricePerKgCents, densityGcm3: +f.densityGcm3,
-        whereToBuyUrl: f.whereToBuyUrl, stockGrams: +f.stockGrams, active: f.active,
+        brandId: f.brandId,
+        materialId: f.materialId,
+        colorId: f.colorId,
+        diameterMm: +f.diameterMm,
+        initialGrams: +f.initialGrams,
+        remainingGrams: isNew ? +f.initialGrams : +f.remainingGrams,
+        pricePaidCents: +f.pricePaidCents,
+        supplier: f.supplier || null,
+        batchCode: f.batchCode || null,
+        notes: f.notes || null,
+        purchaseDate: f.purchaseDate,
       };
-      if (isNew) await api("/inventory/brands", { method: "POST", body: JSON.stringify(body) });
-      else await api(`/inventory/brands/${brand.id}`, { method: "PUT", body: JSON.stringify(body) });
+      if (isNew) await api("/inventory/spools", { method: "POST", body: JSON.stringify(body) });
+      else await api(`/inventory/spools/${spool.id}`, { method: "PUT", body: JSON.stringify(body) });
       onSaved();
     } catch (e: any) { setErr(e.message); }
     finally { setBusy(false); }
   }
 
-  async function del() {
-    if (!confirm(`Delete brand "${f.name}"?`)) return;
-    await api(`/inventory/brands/${brand.id}`, { method: "DELETE" });
-    onSaved();
-  }
-
   return (
     <div className="modal-bg" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <h3>{isNew ? "New Filament Brand" : `Edit: ${brand.name}`}</h3>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
+        <h3>{isNew ? "New Spool" : "Edit Spool"}</h3>
         <div className="form">
           <div className="form-row">
-            <div><label>Brand Name</label><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></div>
             <div>
-              <label>Material</label>
-              <select value={f.material} onChange={e => setF({ ...f, material: e.target.value })}>
-                <option>PLA</option><option>PETG</option><option>ABS</option><option>ASA</option><option>TPU</option><option>Nylon</option>
+              <label>Brand *</label>
+              <select value={f.brandId || ""} onChange={(e) => setF({ ...f, brandId: e.target.value })}>
+                <option value="">— Select —</option>
+                {brands.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label>Purchase Date</label>
+              <input type="date" value={(f.purchaseDate || "").slice(0, 10)} onChange={(e) => setF({ ...f, purchaseDate: e.target.value })} />
+            </div>
+          </div>
+          <div className="form-row">
+            <div>
+              <label>Material *</label>
+              <select value={f.materialId || ""} onChange={(e) => setF({ ...f, materialId: e.target.value })}>
+                <option value="">— Select —</option>
+                {materials.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label>Color *</label>
+              <select value={f.colorId || ""} onChange={(e) => setF({ ...f, colorId: e.target.value })}>
+                <option value="">— Select —</option>
+                {colors.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
           </div>
           <div className="form-row">
-            <div><label>Color</label><input type="color" value={f.colorHex || "#000000"} onChange={e => setF({ ...f, colorHex: e.target.value })} /></div>
-            <div><label>Density (g/cm³)</label><input type="number" step={0.01} value={f.densityGcm3} onChange={e => setF({ ...f, densityGcm3: +e.target.value })} /></div>
-          </div>
-          <div className="form-row">
-            <div><label>Price per kg (cents)</label><input type="number" value={f.pricePerKgCents} onChange={e => setF({ ...f, pricePerKgCents: +e.target.value })} /></div>
-            <div><label>Stock (grams)</label><input type="number" value={f.stockGrams} onChange={e => setF({ ...f, stockGrams: +e.target.value })} /></div>
-          </div>
-          <div><label>Where to Buy URL</label><input value={f.whereToBuyUrl || ""} onChange={e => setF({ ...f, whereToBuyUrl: e.target.value })} /></div>
-          <div><label><input type="checkbox" checked={f.active} onChange={e => setF({ ...f, active: e.target.checked })} style={{ width: "auto", marginRight: "0.5rem" }} />Active</label></div>
-          {err && <div className="error">{err}</div>}
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <div>{!isNew && <button className="btn btn-danger btn-sm" onClick={del}>Delete</button>}</div>
-            <div style={{ display: "flex", gap: "0.5rem" }}>
-              <button className="btn btn-outline btn-sm" onClick={onClose}>Cancel</button>
-              <button className="btn" disabled={busy} onClick={save}>{busy ? "Saving…" : "Save"}</button>
+            <div>
+              <label>Diameter (mm)</label>
+              <input type="number" step="0.05" value={f.diameterMm || 1.75} onChange={(e) => setF({ ...f, diameterMm: e.target.value })} />
             </div>
+            <div>
+              <label>Initial Grams *</label>
+              <input type="number" value={f.initialGrams || 0} onChange={(e) => setF({ ...f, initialGrams: e.target.value })} />
+            </div>
+            <div>
+              <label>Price Paid (cents) *</label>
+              <input type="number" value={f.pricePaidCents || 0} onChange={(e) => setF({ ...f, pricePaidCents: e.target.value })} />
+            </div>
+          </div>
+          {!isNew && (
+            <div>
+              <label>Remaining Grams</label>
+              <input type="number" value={f.remainingGrams || 0} onChange={(e) => setF({ ...f, remainingGrams: e.target.value })} />
+              <div className="help">Direct edit — prefer "Adjust" for tracked changes</div>
+            </div>
+          )}
+          <div className="form-row">
+            <div><label>Supplier</label><input value={f.supplier || ""} onChange={(e) => setF({ ...f, supplier: e.target.value })} /></div>
+            <div><label>Batch Code</label><input value={f.batchCode || ""} onChange={(e) => setF({ ...f, batchCode: e.target.value })} /></div>
+          </div>
+          <div><label>Notes</label><textarea rows={2} value={f.notes || ""} onChange={(e) => setF({ ...f, notes: e.target.value })} /></div>
+          {err && <div className="error">{err}</div>}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+            <button className="btn btn-outline btn-sm" onClick={onClose}>Cancel</button>
+            <button className="btn" disabled={busy} onClick={save}>{busy ? "Saving…" : "Save"}</button>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function AdjustModal({ spool, onClose, onSaved }: any) {
+  const [delta, setDelta] = useState(0);
+  const [reason, setReason] = useState("MANUAL_ADJUST");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function save() {
+    setBusy(true);
+    try {
+      await api(`/inventory/spools/${spool.id}/adjust`, { method: "POST", body: JSON.stringify({ deltaGrams: delta, reason, note }) });
+      onSaved();
+    } finally { setBusy(false); }
+  }
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>Adjust Stock</h3>
+        <p style={{ color: "var(--text-muted)", marginBottom: "1rem" }}>{spool.brand?.name} {spool.material?.name} {spool.color?.name} — currently {spool.remainingGrams}g</p>
+        <div className="form">
+          <div>
+            <label>Delta (negative to subtract)</label>
+            <input type="number" value={delta} onChange={(e) => setDelta(+e.target.value)} />
+            <div className="help">e.g. -50 to remove 50g, +25 to add 25g</div>
+          </div>
+          <div>
+            <label>Reason</label>
+            <select value={reason} onChange={(e) => setReason(e.target.value)}>
+              <option value="FAILED_PRINT">Failed print</option>
+              <option value="DISPOSED">Disposed / dried out</option>
+              <option value="LOST">Lost</option>
+              <option value="MANUAL_ADJUST">Manual correction</option>
+            </select>
+          </div>
+          <div><label>Note</label><input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" /></div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+            <button className="btn btn-outline btn-sm" onClick={onClose}>Cancel</button>
+            <button className="btn" disabled={busy || delta === 0} onClick={save}>{busy ? "Saving…" : "Apply"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pricing + Thresholds ─────────────────────────────
+function PricingTab() {
+  const [combos, setCombos] = useState<any[]>([]);
+  const [materials, setMaterials] = useState<any[]>([]);
+  const [colors, setColors] = useState<any[]>([]);
+  const [editing, setEditing] = useState<any>(null);
+
+  async function load() {
+    setCombos(await api("/inventory/material-colors").catch(() => []));
+    setMaterials(await api("/inventory/materials").catch(() => []));
+    setColors(await api("/inventory/colors").catch(() => []));
+  }
+  useEffect(() => { load(); }, []);
+
+  async function save(row: any) {
+    await api("/inventory/material-colors", { method: "POST", body: JSON.stringify(row) });
+    setEditing(null);
+    load();
+  }
+  async function del(id: string) {
+    if (!confirm("Delete this pricing rule?")) return;
+    await api(`/inventory/material-colors/${id}`, { method: "DELETE" });
+    load();
+  }
+
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h3>List Prices & Low-Stock Thresholds ({combos.length})</h3>
+        <button className="btn" onClick={() => setEditing({ _isNew: true, listPriceKgCents: 2500, lowStockGrams: 500 })}>+ Add Combo</button>
+      </div>
+      <div className="help" style={{ marginBottom: "1rem" }}>
+        List price is what customers see in quotes for this material+color. Low-stock threshold triggers alerts when total stock drops below this value.
+      </div>
+      {combos.length === 0 ? (
+        <div className="empty"><p>No pricing rules yet. Add combinations of materials and colors with their list prices.</p></div>
+      ) : (
+        <table>
+          <thead><tr><th>Material</th><th>Color</th><th>List Price (€/kg)</th><th>Low Stock Alert</th><th></th></tr></thead>
+          <tbody>
+            {combos.map((c) => (
+              <tr key={c.id}>
+                <td><strong>{c.material.name}</strong></td>
+                <td>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <div style={{ width: 14, height: 14, borderRadius: 3, background: c.color.hex, border: "1px solid var(--border)" }} />
+                    {c.color.name}
+                  </div>
+                </td>
+                <td>{fmtMoney(c.listPriceKgCents)}</td>
+                <td>{c.lowStockGrams}g</td>
+                <td style={{ textAlign: "right" }}>
+                  <button className="btn btn-sm btn-outline" onClick={() => setEditing(c)}>Edit</button>{" "}
+                  <button className="btn btn-sm btn-danger" onClick={() => del(c.id)}>×</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {editing && (
+        <div className="modal-bg" onClick={() => setEditing(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{editing._isNew ? "New Combo" : "Edit Combo"}</h3>
+            <div className="form">
+              <div className="form-row">
+                <div>
+                  <label>Material</label>
+                  <select value={editing.materialId || ""} onChange={(e) => setEditing({ ...editing, materialId: e.target.value })}>
+                    <option value="">—</option>
+                    {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label>Color</label>
+                  <select value={editing.colorId || ""} onChange={(e) => setEditing({ ...editing, colorId: e.target.value })}>
+                    <option value="">—</option>
+                    {colors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label>List Price (cents per kg)</label>
+                <input type="number" value={editing.listPriceKgCents} onChange={(e) => setEditing({ ...editing, listPriceKgCents: +e.target.value })} />
+                <div className="help">2500 = €25.00/kg</div>
+              </div>
+              <div>
+                <label>Low-Stock Threshold (grams)</label>
+                <input type="number" value={editing.lowStockGrams} onChange={(e) => setEditing({ ...editing, lowStockGrams: +e.target.value })} />
+                <div className="help">Alert when total stock for this combo drops below this</div>
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+                <button className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Cancel</button>
+                <button className="btn" onClick={() => save(editing)}>Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Brands ──────────────────────────────────────────
+function BrandsTab() {
+  const [brands, setBrands] = useState<any[]>([]);
+  const [editing, setEditing] = useState<any>(null);
+  async function load() { setBrands(await api("/inventory/brands").catch(() => [])); }
+  useEffect(() => { load(); }, []);
+  async function save(b: any) {
+    if (b._isNew) await api("/inventory/brands", { method: "POST", body: JSON.stringify(b) });
+    else await api(`/inventory/brands/${b.id}`, { method: "PUT", body: JSON.stringify(b) });
+    setEditing(null); load();
+  }
+  async function del(id: string) {
+    if (!confirm("Delete this brand?")) return;
+    await api(`/inventory/brands/${id}`, { method: "DELETE" }); load();
+  }
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h3>Brands ({brands.length})</h3>
+        <button className="btn" onClick={() => setEditing({ _isNew: true, active: true })}>+ New Brand</button>
+      </div>
+      {brands.length === 0 ? <div className="empty"><p>No brands yet.</p></div> : (
+        <table>
+          <thead><tr><th>Name</th><th>Website</th><th>Support</th><th>Active</th><th></th></tr></thead>
+          <tbody>
+            {brands.map((b) => (
+              <tr key={b.id}>
+                <td>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                    {b.logoUrl && <img src={b.logoUrl} alt="" style={{ width: 28, height: 28, borderRadius: 4, objectFit: "contain" }} />}
+                    <strong>{b.name}</strong>
+                  </div>
+                </td>
+                <td>{b.websiteUrl ? <a href={b.websiteUrl} target="_blank" style={{ color: "var(--primary)" }}>{b.websiteUrl}</a> : "—"}</td>
+                <td>{b.supportEmail || "—"}</td>
+                <td>{b.active ? "✓" : "—"}</td>
+                <td style={{ textAlign: "right" }}>
+                  <button className="btn btn-sm btn-outline" onClick={() => setEditing(b)}>Edit</button>{" "}
+                  <button className="btn btn-sm btn-danger" onClick={() => del(b.id)}>×</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {editing && (
+        <div className="modal-bg" onClick={() => setEditing(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{editing._isNew ? "New Brand" : "Edit Brand"}</h3>
+            <div className="form">
+              <div><label>Name *</label><input value={editing.name || ""} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
+              <div><label>Website</label><input value={editing.websiteUrl || ""} onChange={(e) => setEditing({ ...editing, websiteUrl: e.target.value })} placeholder="https://" /></div>
+              <div><label>Logo URL</label><input value={editing.logoUrl || ""} onChange={(e) => setEditing({ ...editing, logoUrl: e.target.value })} /></div>
+              <div><label>Support Email</label><input value={editing.supportEmail || ""} onChange={(e) => setEditing({ ...editing, supportEmail: e.target.value })} /></div>
+              <div><label>Notes</label><textarea rows={3} value={editing.notes || ""} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></div>
+              <div><label><input type="checkbox" checked={editing.active !== false} onChange={(e) => setEditing({ ...editing, active: e.target.checked })} style={{ width: "auto", marginRight: "0.5rem" }} />Active</label></div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+                <button className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Cancel</button>
+                <button className="btn" onClick={() => save(editing)}>Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Materials ───────────────────────────────────────
+function MaterialsTab() {
+  const [items, setItems] = useState<any[]>([]);
+  const [editing, setEditing] = useState<any>(null);
+  async function load() { setItems(await api("/inventory/materials").catch(() => [])); }
+  useEffect(() => { load(); }, []);
+  async function save(m: any) {
+    const body = { name: m.name, densityGcm3: +m.densityGcm3, printTempC: m.printTempC ? +m.printTempC : null, bedTempC: m.bedTempC ? +m.bedTempC : null, abrasive: !!m.abrasive, notes: m.notes, active: m.active !== false };
+    if (m._isNew) await api("/inventory/materials", { method: "POST", body: JSON.stringify(body) });
+    else await api(`/inventory/materials/${m.id}`, { method: "PUT", body: JSON.stringify(body) });
+    setEditing(null); load();
+  }
+  async function del(id: string) {
+    if (!confirm("Delete this material?")) return;
+    await api(`/inventory/materials/${id}`, { method: "DELETE" }); load();
+  }
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h3>Materials ({items.length})</h3>
+        <button className="btn" onClick={() => setEditing({ _isNew: true, densityGcm3: 1.24, active: true })}>+ New Material</button>
+      </div>
+      {items.length === 0 ? <div className="empty"><p>No materials yet.</p></div> : (
+        <table>
+          <thead><tr><th>Name</th><th>Density</th><th>Print / Bed Temp</th><th>Abrasive</th><th></th></tr></thead>
+          <tbody>
+            {items.map((m) => (
+              <tr key={m.id}>
+                <td><strong>{m.name}</strong></td>
+                <td>{m.densityGcm3} g/cm³</td>
+                <td>{m.printTempC || "—"}°C / {m.bedTempC || "—"}°C</td>
+                <td>{m.abrasive ? "Yes" : "No"}</td>
+                <td style={{ textAlign: "right" }}>
+                  <button className="btn btn-sm btn-outline" onClick={() => setEditing(m)}>Edit</button>{" "}
+                  <button className="btn btn-sm btn-danger" onClick={() => del(m.id)}>×</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {editing && (
+        <div className="modal-bg" onClick={() => setEditing(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{editing._isNew ? "New Material" : "Edit Material"}</h3>
+            <div className="form">
+              <div><label>Name *</label><input value={editing.name || ""} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
+              <div><label>Density (g/cm³)</label><input type="number" step="0.01" value={editing.densityGcm3 || 1.24} onChange={(e) => setEditing({ ...editing, densityGcm3: e.target.value })} /></div>
+              <div className="form-row">
+                <div><label>Print Temp (°C)</label><input type="number" value={editing.printTempC || ""} onChange={(e) => setEditing({ ...editing, printTempC: e.target.value })} /></div>
+                <div><label>Bed Temp (°C)</label><input type="number" value={editing.bedTempC || ""} onChange={(e) => setEditing({ ...editing, bedTempC: e.target.value })} /></div>
+              </div>
+              <div><label><input type="checkbox" checked={!!editing.abrasive} onChange={(e) => setEditing({ ...editing, abrasive: e.target.checked })} style={{ width: "auto", marginRight: "0.5rem" }} />Abrasive (needs hardened nozzle)</label></div>
+              <div><label>Notes</label><textarea rows={2} value={editing.notes || ""} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+                <button className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Cancel</button>
+                <button className="btn" onClick={() => save(editing)}>Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Colors ──────────────────────────────────────────
+function ColorsTab() {
+  const [items, setItems] = useState<any[]>([]);
+  const [editing, setEditing] = useState<any>(null);
+  async function load() { setItems(await api("/inventory/colors").catch(() => [])); }
+  useEffect(() => { load(); }, []);
+  async function save(c: any) {
+    const body = { name: c.name, hex: c.hex, swatchUrl: c.swatchUrl };
+    if (c._isNew) await api("/inventory/colors", { method: "POST", body: JSON.stringify(body) });
+    else await api(`/inventory/colors/${c.id}`, { method: "PUT", body: JSON.stringify(body) });
+    setEditing(null); load();
+  }
+  async function del(id: string) {
+    if (!confirm("Delete this color?")) return;
+    await api(`/inventory/colors/${id}`, { method: "DELETE" }); load();
+  }
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h3>Colors ({items.length})</h3>
+        <button className="btn" onClick={() => setEditing({ _isNew: true, hex: "#000000" })}>+ New Color</button>
+      </div>
+      {items.length === 0 ? <div className="empty"><p>No colors yet.</p></div> : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "0.75rem" }}>
+          {items.map((c) => (
+            <div key={c.id} style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "1rem", textAlign: "center" }}>
+              <div style={{ width: 60, height: 60, borderRadius: 30, background: c.hex, border: "1px solid var(--border)", margin: "0 auto 0.75rem" }} />
+              <div style={{ fontWeight: 700 }}>{c.name}</div>
+              <div style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontFamily: "monospace" }}>{c.hex}</div>
+              <div style={{ marginTop: "0.75rem", display: "flex", gap: "0.4rem", justifyContent: "center" }}>
+                <button className="btn btn-sm btn-outline" onClick={() => setEditing(c)}>Edit</button>
+                <button className="btn btn-sm btn-danger" onClick={() => del(c.id)}>×</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editing && (
+        <div className="modal-bg" onClick={() => setEditing(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{editing._isNew ? "New Color" : "Edit Color"}</h3>
+            <div className="form">
+              <div><label>Name *</label><input value={editing.name || ""} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Black, White, Galaxy Purple…" /></div>
+              <div>
+                <label>Hex Color</label>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <input type="color" value={editing.hex || "#000000"} onChange={(e) => setEditing({ ...editing, hex: e.target.value })} style={{ width: 60, padding: 0 }} />
+                  <input value={editing.hex || ""} onChange={(e) => setEditing({ ...editing, hex: e.target.value })} placeholder="#000000" style={{ flex: 1 }} />
+                </div>
+              </div>
+              <div><label>Swatch Image URL (optional)</label><input value={editing.swatchUrl || ""} onChange={(e) => setEditing({ ...editing, swatchUrl: e.target.value })} /></div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+                <button className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Cancel</button>
+                <button className="btn" onClick={() => save(editing)}>Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Movements history ───────────────────────────────
+function MovementsTab() {
+  const [movements, setMovements] = useState<any[]>([]);
+  const [reason, setReason] = useState("");
+  async function load() {
+    const q = reason ? `?reason=${reason}` : "";
+    setMovements(await api("/inventory/movements" + q).catch(() => []));
+  }
+  useEffect(() => { load(); }, [reason]);
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h3>Movement History</h3>
+        <select value={reason} onChange={(e) => setReason(e.target.value)} style={{ width: "auto" }}>
+          <option value="">All reasons</option>
+          <option value="PURCHASE">Purchase</option>
+          <option value="PRINT_USED">Print used</option>
+          <option value="FAILED_PRINT">Failed print</option>
+          <option value="DISPOSED">Disposed</option>
+          <option value="LOST">Lost</option>
+          <option value="MANUAL_ADJUST">Manual adjust</option>
+        </select>
+      </div>
+      {movements.length === 0 ? <div className="empty"><p>No movements yet.</p></div> : (
+        <table>
+          <thead><tr><th>Date</th><th>Spool</th><th>Reason</th><th>Grams</th><th>Cost</th><th>Note</th></tr></thead>
+          <tbody>
+            {movements.map((m) => (
+              <tr key={m.id}>
+                <td style={{ color: "var(--text-muted)", fontSize: "0.82rem" }}>{new Date(m.createdAt).toLocaleString()}</td>
+                <td>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                    <div style={{ width: 12, height: 12, borderRadius: 2, background: m.spool?.color?.hex || "#ccc" }} />
+                    <span style={{ fontSize: "0.85rem" }}>{m.spool?.brand?.name} {m.spool?.material?.name} {m.spool?.color?.name}</span>
+                  </div>
+                </td>
+                <td><span className="badge badge-muted">{m.reason}</span></td>
+                <td style={{ fontWeight: 700, color: m.deltaGrams < 0 ? "#ef4444" : "#16a34a" }}>{m.deltaGrams > 0 ? "+" : ""}{m.deltaGrams}g</td>
+                <td>{fmtMoney(m.costCents)}</td>
+                <td style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>{m.note || "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

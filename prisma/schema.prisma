@@ -110,17 +110,19 @@ model OrderItem {
 }
 
 model Quote {
-  id                String         @id @default(cuid())
+  id                String      @id @default(cuid())
   userId            String?
-  user              User?          @relation(fields: [userId], references: [id])
+  user              User?       @relation(fields: [userId], references: [id])
   email             String
   stlUploadId       String
-  stlUpload         StlUpload      @relation(fields: [stlUploadId], references: [id])
+  stlUpload         StlUpload   @relation(fields: [stlUploadId], references: [id])
   material          String
-  filamentBrandId   String?
-  filamentBrand     FilamentBrand? @relation(fields: [filamentBrandId], references: [id])
-  infillPct         Int            @default(20)
-  layerHeightMm     Float          @default(0.2)
+  materialId        String?
+  materialRef       Material?   @relation(fields: [materialId], references: [id])
+  colorId           String?
+  colorRef          Color?      @relation(fields: [colorId], references: [id])
+  infillPct         Int         @default(20)
+  layerHeightMm     Float       @default(0.2)
   volumeCm3         Float?
   weightG           Float?
   printMinutes      Int?
@@ -130,11 +132,12 @@ model Quote {
   machineCostCents  Int?
   marginCents       Int?
   totalCents        Int?
-  status            QuoteStatus    @default(NEW)
+  status            QuoteStatus @default(NEW)
   adminNote         String?
   order             Order?
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  printJob          PrintJob?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 }
 
 enum QuoteStatus {
@@ -157,32 +160,183 @@ model StlUpload {
   quotes     Quote[]
 }
 
-model FilamentBrand {
-  id              String   @id @default(cuid())
-  name            String
-  material        String
-  colorHex        String?
-  pricePerKgCents Int
-  densityGcm3     Float    @default(1.24)
-  whereToBuyUrl   String?
-  stockGrams      Int      @default(0)
-  active          Boolean  @default(true)
-  quotes          Quote[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+// ─── Inventory: Brand / Material / Color / Spool ──────
+
+model Brand {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  websiteUrl  String?
+  logoUrl     String?
+  supportEmail String?
+  notes       String?
+  active      Boolean  @default(true)
+  spools      Spool[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
+model Material {
+  id              String           @id @default(cuid())
+  name            String           @unique  // "PLA", "PETG", "ABS"...
+  densityGcm3     Float            @default(1.24)
+  printTempC      Int?
+  bedTempC        Int?
+  abrasive        Boolean          @default(false)
+  notes           String?
+  active          Boolean          @default(true)
+  spools          Spool[]
+  materialColors  MaterialColor[]
+  quotes          Quote[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+model Color {
+  id              String           @id @default(cuid())
+  name            String           @unique
+  hex             String           @default("#000000")
+  swatchUrl       String?
+  spools          Spool[]
+  materialColors  MaterialColor[]
+  quotes          Quote[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+// List price per (material, color) combination — used by the quote engine.
+// FIFO costing is separate and stored on movements.
+model MaterialColor {
+  id              String   @id @default(cuid())
+  materialId      String
+  material        Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  colorId         String
+  color           Color    @relation(fields: [colorId], references: [id], onDelete: Cascade)
+  listPriceKgCents Int     @default(2500)   // €25/kg default
+  lowStockGrams   Int      @default(500)    // alert when total stock for this combo drops below
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  @@unique([materialId, colorId])
+}
+
+// A physical spool you've purchased. Each is tracked individually for FIFO.
+model Spool {
+  id                String              @id @default(cuid())
+  brandId           String
+  brand             Brand               @relation(fields: [brandId], references: [id])
+  materialId        String
+  material          Material            @relation(fields: [materialId], references: [id])
+  colorId           String
+  color             Color               @relation(fields: [colorId], references: [id])
+  diameterMm        Float               @default(1.75)
+  initialGrams      Int                 // weight at purchase
+  remainingGrams    Int                 // current
+  pricePaidCents    Int                 // total paid for this spool (incl tax & shipping)
+  supplier          String?
+  purchaseDate      DateTime            @default(now())
+  batchCode         String?
+  notes             String?
+  status            SpoolStatus         @default(IN_STOCK)
+  movements         FilamentMovement[]
+  loadedOnPrinterId String?             @unique
+  loadedOnPrinter   Printer?            @relation(fields: [loadedOnPrinterId], references: [id])
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  @@index([materialId, colorId])
+  @@index([status, purchaseDate])
+}
+
+enum SpoolStatus {
+  IN_STOCK
+  IN_USE
+  EMPTY
+  DISPOSED
+}
+
+model FilamentMovement {
+  id          String           @id @default(cuid())
+  spoolId     String
+  spool       Spool            @relation(fields: [spoolId], references: [id], onDelete: Cascade)
+  deltaGrams  Int              // negative = consumed, positive = added (e.g. correction)
+  reason      MovementReason
+  costCents   Int              // cost-of-goods at FIFO price for this movement
+  printJobId  String?
+  printJob    PrintJob?        @relation(fields: [printJobId], references: [id])
+  note        String?
+  createdAt   DateTime         @default(now())
+  @@index([spoolId, createdAt])
+  @@index([reason, createdAt])
+}
+
+enum MovementReason {
+  PURCHASE         // initial when spool created
+  PRINT_USED       // consumed during a successful print
+  FAILED_PRINT     // wasted on a failed print
+  DISPOSED         // dried out / contaminated / thrown away
+  LOST             // missing
+  MANUAL_ADJUST    // admin correction
+}
+
+model FilamentAlert {
+  id           String        @id @default(cuid())
+  materialId   String
+  material     Material      @relation(fields: [materialId], references: [id])
+  colorId      String
+  color        Color         @relation(fields: [colorId], references: [id])
+  thresholdG   Int
+  currentG     Int
+  read         Boolean       @default(false)
+  emailSent    Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  @@index([read, createdAt])
+}
+
+// ─── Print queue ───────────────────────────────────────
+
+model PrintJob {
+  id              String         @id @default(cuid())
+  quoteId         String?        @unique
+  quote           Quote?         @relation(fields: [quoteId], references: [id])
+  printerId       String?
+  printer         Printer?       @relation(fields: [printerId], references: [id])
+  spoolId         String?        // override spool — defaults to printer's loaded spool
+  title           String         // human label, e.g. "Quote #abc12345"
+  status          PrintJobStatus @default(QUEUED)
+  expectedGrams   Int?           // from quote
+  actualGrams     Int?           // from Moonraker print_stats.filament_used
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  moonrakerJobId  String?
+  notes           String?
+  movements       FilamentMovement[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  @@index([status, createdAt])
+}
+
+enum PrintJobStatus {
+  QUEUED
+  PRINTING
+  PENDING_REVIEW   // finished, waiting for admin to confirm filament deduction (CONFIRM mode)
+  DONE
+  FAILED
+  CANCELLED
+}
+
+// ─── Printers ──────────────────────────────────────────
+
 model Printer {
-  id               String    @id @default(cuid())
+  id               String     @id @default(cuid())
   name             String
   moonrakerUrl     String
   apiKey           String?
-  costPerHourCents Int       @default(0)
-  active           Boolean   @default(true)
+  costPerHourCents Int        @default(0)
+  active           Boolean    @default(true)
   lastStatus       Json?
   lastSeenAt       DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  loadedSpool      Spool?
+  printJobs        PrintJob[]
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 }
 
 model ContactMessage {
@@ -202,7 +356,6 @@ model PageView {
   ua        String?
   ip        String?
   createdAt DateTime @default(now())
-
   @@index([path])
   @@index([createdAt])
 }

@@ -10,6 +10,7 @@ const TABS = [
   { id: "smtp",      label: "Email (SMTP)" },
   { id: "seo",       label: "SEO" },
   { id: "pricing",   label: "Pricing" },
+  { id: "inventory", label: "Inventory" },
   { id: "energy",    label: "Energy" },
   { id: "mollie",    label: "Mollie" },
 ];
@@ -158,6 +159,29 @@ export default function SettingsPage() {
             <div><label>Default Machine Cost (cents/hour)</label><input type="number" value={s["pricing.defaultMachineCostHourCents"] ?? 200} onChange={(e) => set("pricing.defaultMachineCostHourCents", +e.target.value)} /></div>
             <div><label>Minimum Order (cents)</label><input type="number" value={s["pricing.minOrderCents"] ?? 500} onChange={(e) => set("pricing.minOrderCents", +e.target.value)} /></div>
             <SaveBar keys={["pricing.marginPct","pricing.setupFeeCents","pricing.defaultMachineCostHourCents","pricing.minOrderCents"]} />
+          </div>
+        )}
+
+
+        {tab === "inventory" && (
+          <div className="form">
+            <div className="help" style={{ padding: "0.75rem", background: "var(--bg-elev-2)", borderRadius: 8 }}>
+              Settings for filament inventory, Moonraker deduction, and low-stock alerts.
+            </div>
+            <div>
+              <label>Moonraker Deduction Mode</label>
+              <select value={s["inventory.deductionMode"] || "CONFIRM"} onChange={(e) => set("inventory.deductionMode", e.target.value)}>
+                <option value="AUTO">AUTO — deduct immediately when a print finishes</option>
+                <option value="CONFIRM">CONFIRM — review in Print Queue before deducting (recommended)</option>
+              </select>
+              <div className="help">AUTO deducts filament the instant Moonraker reports a finished print. CONFIRM sends finished prints to the Print Queue as "Pending Review" so you can mark success/failure before stock is touched.</div>
+            </div>
+            <div>
+              <label>Low-Stock Alert Email</label>
+              <input value={s["alerts.email"] || ""} onChange={(e) => set("alerts.email", e.target.value)} placeholder="you@example.com" />
+              <div className="help">Empty = use company email from the Company tab. Requires SMTP configured in the Email tab.</div>
+            </div>
+            <SaveBar keys={["inventory.deductionMode", "alerts.email"]} />
           </div>
         )}
 

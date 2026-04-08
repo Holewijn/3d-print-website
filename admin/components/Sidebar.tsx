@@ -17,10 +17,16 @@ const NAV = [
     ],
   },
   {
-    section: "Operations",
+    section: "Production",
     items: [
       { href: "/printers/", label: "Printers", icon: "▲" },
+      { href: "/print-queue/", label: "Print Queue", icon: "⇉" },
       { href: "/inventory/", label: "Inventory", icon: "◉" },
+    ],
+  },
+  {
+    section: "Operations",
+    items: [
       { href: "/shipping/", label: "Shipping", icon: "✈" },
       { href: "/contact/", label: "Messages", icon: "✉" },
       { href: "/contact-form/", label: "Contact Form", icon: "▤" },
@@ -43,11 +49,8 @@ export default function Sidebar() {
     href === "/" ? pathname === "/" || pathname === "" : pathname.startsWith(href);
 
   const [brand, setBrand] = useState<any>({
-    brandName: "Print Studio",
-    tagline: "Admin v1.0",
-    logoMark: "3D",
-    logoUrl: "",
-    primaryColor: "#3b82f6",
+    brandName: "Print Studio", tagline: "Admin v1.0",
+    logoMark: "3D", logoUrl: "", primaryColor: "#3b82f6",
   });
 
   useEffect(() => {
@@ -55,15 +58,10 @@ export default function Sidebar() {
       if (s["admin"]) {
         const a = s["admin"];
         setBrand((prev: any) => ({ ...prev, ...a }));
-        // Apply primary color globally
         if (a.primaryColor) {
           document.documentElement.style.setProperty("--primary", a.primaryColor);
           document.documentElement.style.setProperty("--primary-dark", a.primaryColor);
-          // Make a translucent version for soft backgrounds
-          document.documentElement.style.setProperty(
-            "--primary-soft",
-            hexToRgba(a.primaryColor, 0.12)
-          );
+          document.documentElement.style.setProperty("--primary-soft", hexToRgba(a.primaryColor, 0.12));
         }
       }
     }).catch(() => {});
@@ -72,11 +70,9 @@ export default function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        {brand.logoUrl ? (
-          <img src={brand.logoUrl} alt={brand.brandName} style={{ height: 36, width: "auto" }} />
-        ) : (
-          <div className="mark">{brand.logoMark}</div>
-        )}
+        {brand.logoUrl
+          ? <img src={brand.logoUrl} alt={brand.brandName} style={{ height: 36, width: "auto" }} />
+          : <div className="mark">{brand.logoMark}</div>}
         <div>
           <div className="name">{brand.brandName}</div>
           <div className="ver">{brand.tagline}</div>

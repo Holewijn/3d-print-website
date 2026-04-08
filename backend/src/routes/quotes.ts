@@ -1,3 +1,4 @@
+// backend/src/routes/quotes.ts — REPLACE the existing file
 import { Router } from "express";
 import { prisma } from "../db";
 import { requireAuth, requireAdmin, AuthedRequest } from "../middleware/auth";
@@ -7,7 +8,6 @@ import { getEnergyPriceCentsKwh } from "../services/energy";
 
 export const quotesRouter = Router();
 
-// ─── Helper: find user by email and return id, or null ───
 async function findUserIdByEmail(email: string | undefined | null): Promise<string | null> {
   if (!email) return null;
   const u = await prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
@@ -15,7 +15,7 @@ async function findUserIdByEmail(email: string | undefined | null): Promise<stri
 }
 
 quotesRouter.post("/", async (req: AuthedRequest, res) => {
-  const { stlUploadId, email, material, filamentBrandId, infillPct, layerHeightMm } = req.body;
+  const { stlUploadId, email, materialId, colorId, infillPct, layerHeightMm } = req.body;
   const upl = await prisma.stlUpload.findUnique({ where: { id: stlUploadId } });
   if (!upl) return res.status(404).json({ error: "STL not found" });
 
@@ -24,7 +24,23 @@ quotesRouter.post("/", async (req: AuthedRequest, res) => {
     return res.status(400).json({ error: "Invalid STL: " + e.message });
   }
 
-  const brand = filamentBrandId ? await prisma.filamentBrand.findUnique({ where: { id: filamentBrandId } }) : null;
+  // Resolve material + color (both required for new pricing model)
+  const material = materialId
+    ? await prisma.material.findUnique({ where: { id: materialId } })
+    : await prisma.material.findFirst({ where: { active: true, name: "PLA" } });
+  if (!material) return res.status(400).json({ error: "Material not found" });
+
+  const color = colorId ? await prisma.color.findUnique({ where: { id: colorId } }) : null;
+
+  // Find the list price for this combo
+  let pricePerKgCents = 2500;
+  if (color) {
+    const mc = await prisma.materialColor.findUnique({
+      where: { materialId_colorId: { materialId: material.id, colorId: color.id } },
+    });
+    if (mc) pricePerKgCents = mc.listPriceKgCents;
+  }
+
   const energyCents = await getEnergyPriceCentsKwh();
   const marginPct = await getSetting<number>("pricing.marginPct", 25);
   const machineCostHour = await getSetting<number>("pricing.defaultMachineCostHourCents", 200);
@@ -33,10 +49,10 @@ quotesRouter.post("/", async (req: AuthedRequest, res) => {
 
   const result = calculatePrice({
     volumeCm3,
-    densityGcm3: brand?.densityGcm3 ?? 1.24,
+    densityGcm3: material.densityGcm3,
     infillPct: infillPct ?? 20,
     layerHeightMm: layerHeightMm ?? 0.2,
-    pricePerKgCents: brand?.pricePerKgCents ?? 2500,
+    pricePerKgCents,
     energyPriceKwhCents: energyCents,
     printerWattage: 150,
     machineCostPerHourCents: machineCostHour,
@@ -46,7 +62,6 @@ quotesRouter.post("/", async (req: AuthedRequest, res) => {
     minOrderCents,
   });
 
-  // Auto-link to existing user if logged in OR matching email exists
   const userId = req.user?.id || (await findUserIdByEmail(email));
 
   const quote = await prisma.quote.create({
@@ -54,8 +69,9 @@ quotesRouter.post("/", async (req: AuthedRequest, res) => {
       userId,
       email: email || req.user?.email || "",
       stlUploadId,
-      material: material || brand?.material || "PLA",
-      filamentBrandId: brand?.id || null,
+      material: material.name,
+      materialId: material.id,
+      colorId: color?.id || null,
       infillPct: infillPct ?? 20,
       layerHeightMm: layerHeightMm ?? 0.2,
       volumeCm3: result.volumeCm3,
@@ -74,11 +90,17 @@ quotesRouter.post("/", async (req: AuthedRequest, res) => {
 });
 
 quotesRouter.get("/", requireAuth, requireAdmin, async (_req, res) => {
-  res.json(await prisma.quote.findMany({ include: { stlUpload: true, user: true }, orderBy: { createdAt: "desc" } }));
+  res.json(await prisma.quote.findMany({
+    include: { stlUpload: true, user: true, materialRef: true, colorRef: true, printJob: true },
+    orderBy: { createdAt: "desc" },
+  }));
 });
 
 quotesRouter.get("/:id", requireAuth, async (req: AuthedRequest, res) => {
-  const q = await prisma.quote.findUnique({ where: { id: req.params.id }, include: { stlUpload: true } });
+  const q = await prisma.quote.findUnique({
+    where: { id: req.params.id },
+    include: { stlUpload: true, materialRef: true, colorRef: true, printJob: true },
+  });
   if (!q) return res.status(404).json({ error: "Not found" });
   if (req.user?.role !== "ADMIN" && q.userId !== req.user?.id) return res.status(403).json({ error: "Forbidden" });
   res.json(q);
@@ -99,7 +121,7 @@ quotesRouter.post("/:id/convert-to-order", requireAuth, requireAdmin, async (req
       totalCents: q.totalCents,
       subtotalCents: q.totalCents,
       quoteId: q.id,
-      items: { create: [{ name: `Print quote ${q.id}`, priceCents: q.totalCents, qty: 1 }] },
+      items: { create: [{ name: `Print quote ${q.id.slice(-8)}`, priceCents: q.totalCents, qty: 1 }] },
     },
   });
   await prisma.quote.update({ where: { id: q.id }, data: { status: "CONVERTED" } });
