@@ -268,7 +268,7 @@ printerControlRouter.post("/:id/files/upload", requireAuth, requireAdmin, upload
 
     // Forward to Moonraker's upload endpoint as multipart/form-data
     const formData = new FormData();
-    const blob = new Blob([req.file.buffer], { type: "application/octet-stream" });
+    const blob = new Blob([new Uint8Array(req.file.buffer)], { type: "application/octet-stream" });
     formData.append("file", blob, req.file.originalname);
     formData.append("root", "gcodes");
 
