@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import Shell from "../../components/Shell";
 import { api, fmtMoney, fmtDate } from "../../lib/api";
-import InventoryIOButtons from "../../components/InventoryIOButtons";
+import ImagePicker from "../../components/ImagePicker";
 
 const TABS = [
   { id: "dashboard",  label: "Dashboard" },
@@ -19,21 +19,16 @@ export default function InventoryPage() {
   return (
     <Shell title="Inventory" subtitle="Filament stock, pricing, and movement history">
       <div className="panel" style={{ marginBottom: "1rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border)", gap: "1rem", flexWrap: "wrap" }}>
-          <div style={{ display: "flex", gap: "1.25rem", flexWrap: "wrap" }}>
-            {TABS.map((t) => (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{
-                background: "transparent", border: "none",
-                color: tab === t.id ? "var(--primary)" : "var(--text-muted)",
-                padding: "0.75rem 0", fontWeight: 600, cursor: "pointer", fontSize: "0.88rem",
-                borderBottom: tab === t.id ? "2px solid var(--primary)" : "2px solid transparent",
-                marginBottom: "-1px",
-              }}>{t.label}</button>
-            ))}
-          </div>
-          <div style={{ paddingBottom: "0.5rem" }}>
-            <InventoryIOButtons />
-          </div>
+        <div style={{ display: "flex", gap: "1.25rem", borderBottom: "1px solid var(--border)", flexWrap: "wrap" }}>
+          {TABS.map((t) => (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              background: "transparent", border: "none",
+              color: tab === t.id ? "var(--primary)" : "var(--text-muted)",
+              padding: "0.75rem 0", fontWeight: 600, cursor: "pointer", fontSize: "0.88rem",
+              borderBottom: tab === t.id ? "2px solid var(--primary)" : "2px solid transparent",
+              marginBottom: "-1px",
+            }}>{t.label}</button>
+          ))}
         </div>
       </div>
 
@@ -565,7 +560,12 @@ function BrandsTab() {
             <div className="form">
               <div><label>Name *</label><input value={editing.name || ""} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
               <div><label>Website</label><input value={editing.websiteUrl || ""} onChange={(e) => setEditing({ ...editing, websiteUrl: e.target.value })} placeholder="https://" /></div>
-              <div><label>Logo URL</label><input value={editing.logoUrl || ""} onChange={(e) => setEditing({ ...editing, logoUrl: e.target.value })} /></div>
+              <ImagePicker
+                label="Brand Logo"
+                value={editing.logoUrl || ""}
+                onChange={(v) => setEditing({ ...editing, logoUrl: v })}
+                help="Upload from your computer or pick from the media library."
+              />
               <div><label>Support Email</label><input value={editing.supportEmail || ""} onChange={(e) => setEditing({ ...editing, supportEmail: e.target.value })} /></div>
               <div><label>Notes</label><textarea rows={3} value={editing.notes || ""} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></div>
               <div><label><input type="checkbox" checked={editing.active !== false} onChange={(e) => setEditing({ ...editing, active: e.target.checked })} style={{ width: "auto", marginRight: "0.5rem" }} />Active</label></div>

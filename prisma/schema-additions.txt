@@ -1,16 +1,9 @@
-// Add this model to your existing prisma/schema.prisma
-// (anywhere — at the bottom is fine):
-
-model MediaImage {
-  id           String   @id @default(cuid())
-  filename     String   @unique          // stored on disk: <hex>.<ext>
-  originalName String                    // user's original filename
-  mimeType     String
-  sizeBytes    Int
-  width        Int?
-  height       Int?
-  webpFilename String?                   // 800px webp derivative
-  alt          String?                   // optional accessibility label
-  createdAt    DateTime @default(now())
-  @@index([createdAt])
-}
+// Add this single field to the Quote model in prisma/schema.prisma:
+//
+// model Quote {
+//   ... existing fields ...
+//   customerNote      String?     ← ADD THIS LINE (anywhere in the model is fine)
+//   ... rest of fields ...
+// }
+//
+// Then run: pnpm prisma db push && pnpm prisma generate

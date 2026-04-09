@@ -37,7 +37,7 @@ paymentsRouter.post("/webhook", async (req, res) => {
     const payment = await getMolliePayment(id);
     const order = await prisma.order.findUnique({
       where: { molliePaymentId: id },
-      include: { items: true, quote: true },
+      include: { items: true, quote: { include: { printJob: true } } },
     });
     if (!order) return res.status(404).send("no order");
 
@@ -59,9 +59,25 @@ paymentsRouter.post("/webhook", async (req, res) => {
           }
         }
 
-        // NOTE: Filament deduction is handled by the Moonraker worker when
-        // the actual print finishes, not here. This avoids double-deducting
-        // when a paid order is printed and Moonraker reports usage.
+        // If linked to a quote, mark it CONVERTED + create a print job
+        if (order.quote && !order.quote.printJob) {
+          await prisma.quote.update({
+            where: { id: order.quote.id },
+            data: { status: "CONVERTED" },
+          });
+          try {
+            await prisma.printJob.create({
+              data: {
+                quoteId: order.quote.id,
+                title: `Quote #${order.quote.id.slice(-8)} — ${order.quote.email}`,
+                expectedGrams: order.quote.weightG ? Math.ceil(order.quote.weightG) : null,
+                status: "QUEUED",
+              },
+            });
+          } catch (err: any) {
+            console.error("[payments] failed to create PrintJob from quote:", err.message);
+          }
+        }
 
         // Auto-create invoice + email
         try {

@@ -1,17 +1,20 @@
 "use client";
-import { use, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { api } from "../../../lib/api";
 import { useCart } from "../../../lib/cart";
 
-export default function ProductDetail({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = use(params);
+export default function ProductDetail() {
+  const params = useParams();
+  const slug = (params?.slug as string) || "";
   const [product, setProduct] = useState<any>(null);
   const [qty, setQty] = useState(1);
   const [notFound, setNotFound] = useState(false);
   const { add } = useCart();
 
   useEffect(() => {
+    if (!slug) return;
     api(`/products/${slug}`).then(setProduct).catch(() => setNotFound(true));
   }, [slug]);
 

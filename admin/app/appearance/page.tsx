@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Shell from "../../components/Shell";
 import { api } from "../../lib/api";
+import ImagePicker from "../../components/ImagePicker";
 
 const TABS = [
   { id: "header",  label: "Site Header" },
@@ -10,7 +11,6 @@ const TABS = [
 ];
 
 const DEFAULT_HEADER = {
-  logoType: "text",
   logoText: "3D Print Studio",
   logoMark: "▲",
   logoUrl: "",
@@ -80,7 +80,6 @@ export default function AppearancePage() {
     setSaving(true);
     await api("/settings/admin", { method: "PUT", body: JSON.stringify({ value: admin }) });
     setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2500);
-    // Reload to apply branding changes
     setTimeout(() => window.location.reload(), 500);
   }
 
@@ -103,31 +102,22 @@ export default function AppearancePage() {
 
         {tab === "header" && (
           <div className="form">
-            <div>
-              <label>Logo Type</label>
-              <select value={header.logoType} onChange={(e) => setHeader({ ...header, logoType: e.target.value })}>
-                <option value="text">Text + Mark</option>
-                <option value="image">Image</option>
-              </select>
+            <div className="help" style={{ padding: "0.75rem", background: "var(--bg-elev-2)", borderRadius: 8 }}>
+              You can use a logo image, a text name, or both. If both are set, the image appears on the left and the text on the right.
             </div>
-            {header.logoType === "image" ? (
-              <div>
-                <label>Logo Image URL</label>
-                <input value={header.logoUrl} onChange={(e) => setHeader({ ...header, logoUrl: e.target.value })} placeholder="https://…/logo.svg" />
-                <div className="help">Recommended height: 40px. Use SVG or PNG with transparent background.</div>
-              </div>
-            ) : (
-              <div className="form-row">
-                <div>
-                  <label>Logo Mark (single character/emoji)</label>
-                  <input value={header.logoMark} onChange={(e) => setHeader({ ...header, logoMark: e.target.value })} placeholder="▲" />
-                </div>
-                <div>
-                  <label>Logo Text</label>
-                  <input value={header.logoText} onChange={(e) => setHeader({ ...header, logoText: e.target.value })} />
-                </div>
-              </div>
-            )}
+
+            <ImagePicker
+              label="Logo Image"
+              value={header.logoUrl || ""}
+              onChange={(v) => setHeader({ ...header, logoUrl: v })}
+              help="Upload a PNG/SVG (rendered at 40px height). Leave empty to skip the image."
+            />
+
+            <div>
+              <label>Logo Text</label>
+              <input value={header.logoText || ""} onChange={(e) => setHeader({ ...header, logoText: e.target.value })} placeholder="3D Print Studio" />
+              <div className="help">The brand name shown next to the image. Leave empty to skip the text.</div>
+            </div>
 
             <div>
               <label>Menu Items</label>
@@ -224,22 +214,10 @@ export default function AppearancePage() {
               </div>
             </div>
 
-            <div>
-              <label>Contact Email</label>
-              <input value={footer.contactEmail} onChange={(e) => setFooter({ ...footer, contactEmail: e.target.value })} />
-            </div>
-            <div>
-              <label>Contact Phone</label>
-              <input value={footer.contactPhone} onChange={(e) => setFooter({ ...footer, contactPhone: e.target.value })} />
-            </div>
-            <div>
-              <label>Contact Address</label>
-              <input value={footer.contactAddress} onChange={(e) => setFooter({ ...footer, contactAddress: e.target.value })} />
-            </div>
-            <div>
-              <label>Copyright Line</label>
-              <input value={footer.copyright} onChange={(e) => setFooter({ ...footer, copyright: e.target.value })} />
-            </div>
+            <div><label>Contact Email</label><input value={footer.contactEmail} onChange={(e) => setFooter({ ...footer, contactEmail: e.target.value })} /></div>
+            <div><label>Contact Phone</label><input value={footer.contactPhone} onChange={(e) => setFooter({ ...footer, contactPhone: e.target.value })} /></div>
+            <div><label>Contact Address</label><input value={footer.contactAddress} onChange={(e) => setFooter({ ...footer, contactAddress: e.target.value })} /></div>
+            <div><label>Copyright Line</label><input value={footer.copyright} onChange={(e) => setFooter({ ...footer, copyright: e.target.value })} /></div>
 
             <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", marginTop: "1rem" }}>
               <button className="btn" disabled={saving} onClick={saveFooter}>{saving ? "Saving…" : "Save Footer"}</button>
@@ -253,18 +231,20 @@ export default function AppearancePage() {
             <div className="help" style={{ padding: "0.75rem", background: "var(--bg-elev-2)", borderRadius: 8 }}>
               These settings change the admin panel's branding (the sidebar logo, name, and primary color). Changes apply after refresh.
             </div>
-            <div className="form-row">
-              <div>
-                <label>Brand Mark (text/emoji)</label>
-                <input value={admin.logoMark} onChange={(e) => setAdmin({ ...admin, logoMark: e.target.value })} placeholder="3D" />
-                <div className="help">Short — 1-3 characters</div>
-              </div>
-              <div>
-                <label>Logo Image URL (optional)</label>
-                <input value={admin.logoUrl} onChange={(e) => setAdmin({ ...admin, logoUrl: e.target.value })} />
-                <div className="help">Overrides the text mark if set</div>
-              </div>
+
+            <ImagePicker
+              label="Admin Logo Image"
+              value={admin.logoUrl || ""}
+              onChange={(v) => setAdmin({ ...admin, logoUrl: v })}
+              help="Upload an image (rendered at 36px height). Falls back to the text mark below if empty."
+            />
+
+            <div>
+              <label>Brand Mark (text fallback)</label>
+              <input value={admin.logoMark || ""} onChange={(e) => setAdmin({ ...admin, logoMark: e.target.value })} placeholder="3D" />
+              <div className="help">Used only if no image is uploaded. Short — 1-3 characters or an emoji.</div>
             </div>
+
             <div className="form-row">
               <div>
                 <label>Brand Name</label>

@@ -1,10 +1,10 @@
-// backend/src/routes/quotes.ts — REPLACE the existing file
 import { Router } from "express";
 import { prisma } from "../db";
 import { requireAuth, requireAdmin, AuthedRequest } from "../middleware/auth";
 import { stlVolumeCm3, calculatePrice } from "../services/stl";
 import { getSetting } from "../services/settings";
 import { getEnergyPriceCentsKwh } from "../services/energy";
+import { createMolliePayment } from "../services/mollie";
 
 export const quotesRouter = Router();
 
@@ -14,8 +14,45 @@ async function findUserIdByEmail(email: string | undefined | null): Promise<stri
   return u?.id || null;
 }
 
+// ─── Public: list available material+color combos ─────
+// Returns every priced combo with current stock info. Frontend can show
+// out-of-stock combos with a badge but still let customer order.
+quotesRouter.get("/available-combos", async (_req, res) => {
+  const combos = await prisma.materialColor.findMany({
+    include: { material: true, color: true },
+    orderBy: [{ material: { name: "asc" } }, { color: { name: "asc" } }],
+  });
+
+  const out = [];
+  for (const c of combos) {
+    if (!c.material.active) continue;
+    const agg = await prisma.spool.aggregate({
+      where: {
+        materialId: c.materialId,
+        colorId: c.colorId,
+        status: { in: ["IN_STOCK", "IN_USE"] },
+      },
+      _sum: { remainingGrams: true },
+    });
+    const stockG = agg._sum.remainingGrams || 0;
+    out.push({
+      materialId: c.materialId,
+      materialName: c.material.name,
+      densityGcm3: c.material.densityGcm3,
+      colorId: c.colorId,
+      colorName: c.color.name,
+      colorHex: c.color.hex,
+      listPriceKgCents: c.listPriceKgCents,
+      inStock: stockG > 0,
+      stockGrams: stockG,
+    });
+  }
+  res.json(out);
+});
+
+// ─── Public: create a quote ───────────────────────────
 quotesRouter.post("/", async (req: AuthedRequest, res) => {
-  const { stlUploadId, email, materialId, colorId, infillPct, layerHeightMm } = req.body;
+  const { stlUploadId, email, materialId, colorId, infillPct, layerHeightMm, customerNote } = req.body;
   const upl = await prisma.stlUpload.findUnique({ where: { id: stlUploadId } });
   if (!upl) return res.status(404).json({ error: "STL not found" });
 
@@ -24,22 +61,18 @@ quotesRouter.post("/", async (req: AuthedRequest, res) => {
     return res.status(400).json({ error: "Invalid STL: " + e.message });
   }
 
-  // Resolve material + color (both required for new pricing model)
-  const material = materialId
-    ? await prisma.material.findUnique({ where: { id: materialId } })
-    : await prisma.material.findFirst({ where: { active: true, name: "PLA" } });
+  if (!materialId) return res.status(400).json({ error: "Material required" });
+  const material = await prisma.material.findUnique({ where: { id: materialId } });
   if (!material) return res.status(400).json({ error: "Material not found" });
 
   const color = colorId ? await prisma.color.findUnique({ where: { id: colorId } }) : null;
+  if (!color) return res.status(400).json({ error: "Color required" });
 
-  // Find the list price for this combo
-  let pricePerKgCents = 2500;
-  if (color) {
-    const mc = await prisma.materialColor.findUnique({
-      where: { materialId_colorId: { materialId: material.id, colorId: color.id } },
-    });
-    if (mc) pricePerKgCents = mc.listPriceKgCents;
-  }
+  // Look up the list price for this combo
+  const mc = await prisma.materialColor.findUnique({
+    where: { materialId_colorId: { materialId: material.id, colorId: color.id } },
+  });
+  if (!mc) return res.status(400).json({ error: "This material+color combination is not currently offered" });
 
   const energyCents = await getEnergyPriceCentsKwh();
   const marginPct = await getSetting<number>("pricing.marginPct", 25);
@@ -52,7 +85,7 @@ quotesRouter.post("/", async (req: AuthedRequest, res) => {
     densityGcm3: material.densityGcm3,
     infillPct: infillPct ?? 20,
     layerHeightMm: layerHeightMm ?? 0.2,
-    pricePerKgCents,
+    pricePerKgCents: mc.listPriceKgCents,
     energyPriceKwhCents: energyCents,
     printerWattage: 150,
     machineCostPerHourCents: machineCostHour,
@@ -71,7 +104,7 @@ quotesRouter.post("/", async (req: AuthedRequest, res) => {
       stlUploadId,
       material: material.name,
       materialId: material.id,
-      colorId: color?.id || null,
+      colorId: color.id,
       infillPct: infillPct ?? 20,
       layerHeightMm: layerHeightMm ?? 0.2,
       volumeCm3: result.volumeCm3,
@@ -83,12 +116,50 @@ quotesRouter.post("/", async (req: AuthedRequest, res) => {
       machineCostCents: result.machineCostCents,
       marginCents: result.marginCents,
       totalCents: result.totalCents,
+      customerNote: customerNote || null,
       status: "PRICED",
     },
   });
   res.json(quote);
 });
 
+// ─── Public: pay for a quote (creates Order + Mollie session) ─
+quotesRouter.post("/:id/checkout", async (req: AuthedRequest, res) => {
+  const q = await prisma.quote.findUnique({ where: { id: req.params.id } });
+  if (!q || !q.totalCents) return res.status(400).json({ error: "Quote not priced" });
+  if (q.status === "CONVERTED") return res.status(400).json({ error: "Quote already converted" });
+
+  // Create the order linked to the quote
+  const order = await prisma.order.create({
+    data: {
+      userId: q.userId,
+      email: q.email,
+      totalCents: q.totalCents,
+      subtotalCents: q.totalCents,
+      shippingCents: 0,
+      quoteId: q.id,
+      items: { create: [{ name: `3D Print Quote #${q.id.slice(-8)}`, priceCents: q.totalCents, qty: 1 }] },
+    },
+  });
+
+  // Create Mollie payment
+  const base = process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`;
+  try {
+    const payment = await createMolliePayment({
+      amountCents: order.totalCents,
+      description: `Quote ${q.id.slice(-8)}`,
+      orderId: order.id,
+      redirectUrl: `${base}/order/${order.id}/thanks`,
+      webhookUrl: `${base}/api/payments/webhook`,
+    });
+    await prisma.order.update({ where: { id: order.id }, data: { molliePaymentId: payment.id } });
+    res.json({ orderId: order.id, checkoutUrl: payment._links?.checkout?.href });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── Admin: list quotes ───────────────────────────────
 quotesRouter.get("/", requireAuth, requireAdmin, async (_req, res) => {
   res.json(await prisma.quote.findMany({
     include: { stlUpload: true, user: true, materialRef: true, colorRef: true, printJob: true },
@@ -126,4 +197,23 @@ quotesRouter.post("/:id/convert-to-order", requireAuth, requireAdmin, async (req
   });
   await prisma.quote.update({ where: { id: q.id }, data: { status: "CONVERTED" } });
   res.json(order);
+});
+
+// ─── Admin: manually send a quote to the print queue ──
+quotesRouter.post("/:id/send-to-queue", requireAuth, requireAdmin, async (req, res) => {
+  const q = await prisma.quote.findUnique({
+    where: { id: req.params.id },
+    include: { printJob: true },
+  });
+  if (!q) return res.status(404).json({ error: "Not found" });
+  if (q.printJob) return res.status(400).json({ error: "Already in print queue" });
+  const job = await prisma.printJob.create({
+    data: {
+      quoteId: q.id,
+      title: `Quote #${q.id.slice(-8)} — ${q.email}`,
+      expectedGrams: q.weightG ? Math.ceil(q.weightG) : null,
+      status: "QUEUED",
+    },
+  });
+  res.json(job);
 });

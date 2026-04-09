@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Shell from "../../components/Shell";
 import { api, fmtMoney } from "../../lib/api";
+import ImagePicker from "../../components/ImagePicker";
 
 export default function ProductsAdmin() {
   const [products, setProducts] = useState<any[]>([]);
@@ -24,10 +25,11 @@ export default function ProductsAdmin() {
           <div className="empty"><div className="icon">▣</div><p>No products yet.</p></div>
         ) : (
           <table>
-            <thead><tr><th>Name</th><th>Category</th><th>Price</th><th>Weight</th><th>Stock</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th></th><th>Name</th><th>Category</th><th>Price</th><th>Weight</th><th>Stock</th><th>Status</th><th></th></tr></thead>
             <tbody>
               {products.map((p) => (
                 <tr key={p.id}>
+                  <td>{p.images?.[0] && <img src={p.images[0]} alt="" style={{ width: 40, height: 40, borderRadius: 4, objectFit: "cover" }} />}</td>
                   <td><strong>{p.name}</strong></td>
                   <td>{p.category || "—"}</td>
                   <td>{fmtMoney(p.priceCents)}</td>
@@ -98,10 +100,15 @@ function ProductEditor({ product, onClose, onSaved }: any) {
             <div><label>Slug</label><input value={f.slug} onChange={(e) => setF({ ...f, slug: e.target.value })} /></div>
           </div>
           <div><label>Description</label><textarea rows={3} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></div>
-          <div className="form-row">
-            <div><label>Category</label><input value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} placeholder="Toys, Home, Office…" /></div>
-            <div><label>Image URL</label><input value={f.imageUrl} onChange={(e) => setF({ ...f, imageUrl: e.target.value })} placeholder="https://…" /></div>
-          </div>
+          <div><label>Category</label><input value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} placeholder="Toys, Home, Office…" /></div>
+
+          <ImagePicker
+            label="Product Image"
+            value={f.imageUrl}
+            onChange={(v) => setF({ ...f, imageUrl: v })}
+            help="Upload from your computer or pick from the media library."
+          />
+
           <div className="form-row">
             <div><label>Price (cents)</label><input type="number" value={f.priceCents} onChange={(e) => setF({ ...f, priceCents: +e.target.value })} /></div>
             <div><label>Weight (grams)</label><input type="number" value={f.weightG} onChange={(e) => setF({ ...f, weightG: +e.target.value })} /></div>
