@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Shell from "../../components/Shell";
 import { api, fmtMoney, fmtDate } from "../../lib/api";
 import ImagePicker from "../../components/ImagePicker";
+import InventoryIOButtons from "../../components/InventoryIOButtons";
 
 const TABS = [
   { id: "dashboard",  label: "Dashboard" },
@@ -19,16 +20,21 @@ export default function InventoryPage() {
   return (
     <Shell title="Inventory" subtitle="Filament stock, pricing, and movement history">
       <div className="panel" style={{ marginBottom: "1rem" }}>
-        <div style={{ display: "flex", gap: "1.25rem", borderBottom: "1px solid var(--border)", flexWrap: "wrap" }}>
-          {TABS.map((t) => (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{
-              background: "transparent", border: "none",
-              color: tab === t.id ? "var(--primary)" : "var(--text-muted)",
-              padding: "0.75rem 0", fontWeight: 600, cursor: "pointer", fontSize: "0.88rem",
-              borderBottom: tab === t.id ? "2px solid var(--primary)" : "2px solid transparent",
-              marginBottom: "-1px",
-            }}>{t.label}</button>
-          ))}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border)", gap: "1rem", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: "1.25rem", flexWrap: "wrap" }}>
+            {TABS.map((t) => (
+              <button key={t.id} onClick={() => setTab(t.id)} style={{
+                background: "transparent", border: "none",
+                color: tab === t.id ? "var(--primary)" : "var(--text-muted)",
+                padding: "0.75rem 0", fontWeight: 600, cursor: "pointer", fontSize: "0.88rem",
+                borderBottom: tab === t.id ? "2px solid var(--primary)" : "2px solid transparent",
+                marginBottom: "-1px",
+              }}>{t.label}</button>
+            ))}
+          </div>
+          <div style={{ paddingBottom: "0.5rem" }}>
+            <InventoryIOButtons />
+          </div>
         </div>
       </div>
 
@@ -147,6 +153,14 @@ function SpoolsTab() {
     load();
   }
 
+  async function hardDelete(s: any) {
+    const msg = `PERMANENTLY DELETE this spool?\n\n${s.brand?.name} ${s.material?.name} ${s.color?.name}\nBatch: ${s.batchCode || "—"}\n\nThis removes the spool AND its entire movement history. It cannot be undone.\n\nType DELETE to confirm.`;
+    const answer = prompt(msg);
+    if (answer !== "DELETE") return;
+    await api(`/inventory/spools/${s.id}?confirm=1`, { method: "DELETE" });
+    load();
+  }
+
   async function loadOnPrinter(spoolId: string, printerId: string) {
     if (!printerId) return;
     await api(`/inventory/spools/${spoolId}/load`, { method: "POST", body: JSON.stringify({ printerId }) });
@@ -229,7 +243,8 @@ function SpoolsTab() {
                   <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                     <button className="btn btn-sm btn-outline" onClick={() => setAdjusting(s)}>Adjust</button>{" "}
                     <button className="btn btn-sm btn-outline" onClick={() => setEditing(s)}>Edit</button>{" "}
-                    {s.status !== "DISPOSED" && <button className="btn btn-sm btn-danger" onClick={() => dispose(s.id)}>Dispose</button>}
+                    {s.status !== "DISPOSED" && <button className="btn btn-sm btn-outline" onClick={() => dispose(s.id)} title="Write off remaining grams, mark disposed">Dispose</button>}{" "}
+                    <button className="btn btn-sm btn-danger" onClick={() => hardDelete(s)} title="Permanently delete spool + history">Delete</button>
                   </td>
                 </tr>
               );
@@ -248,9 +263,35 @@ function SpoolEditor({ spool, brands, materials, colors, onClose, onSaved }: any
   const [f, setF] = useState<any>({ ...spool });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [mergeCandidate, setMergeCandidate] = useState<any>(null);
   const isNew = spool._isNew;
 
   async function save() {
+    setBusy(true); setErr("");
+    try {
+      // On NEW spools, check first if an existing (brand+material+color+batch)
+      // combo exists. If yes, prompt the user to merge instead of creating.
+      if (isNew && f.batchCode) {
+        const match = await api("/inventory/spools/find-mergeable", {
+          method: "POST",
+          body: JSON.stringify({
+            brandId: f.brandId,
+            materialId: f.materialId,
+            colorId: f.colorId,
+            batchCode: f.batchCode,
+          }),
+        });
+        if (match) {
+          setMergeCandidate(match);
+          setBusy(false);
+          return;
+        }
+      }
+      await actuallySave();
+    } catch (e: any) { setErr(e.message); setBusy(false); }
+  }
+
+  async function actuallySave() {
     setBusy(true); setErr("");
     try {
       const body = {
@@ -268,6 +309,23 @@ function SpoolEditor({ spool, brands, materials, colors, onClose, onSaved }: any
       };
       if (isNew) await api("/inventory/spools", { method: "POST", body: JSON.stringify(body) });
       else await api(`/inventory/spools/${spool.id}`, { method: "PUT", body: JSON.stringify(body) });
+      onSaved();
+    } catch (e: any) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function doMerge() {
+    setBusy(true); setErr("");
+    try {
+      await api(`/inventory/spools/${mergeCandidate.id}/add-roll`, {
+        method: "POST",
+        body: JSON.stringify({
+          addGrams: +f.initialGrams,
+          addPriceCents: +f.pricePaidCents,
+          note: f.notes || null,
+        }),
+      });
+      setMergeCandidate(null);
       onSaved();
     } catch (e: any) { setErr(e.message); }
     finally { setBusy(false); }
@@ -340,6 +398,36 @@ function SpoolEditor({ spool, brands, materials, colors, onClose, onSaved }: any
           </div>
         </div>
       </div>
+      {mergeCandidate && (
+        <div className="modal-bg" style={{ zIndex: 110 }} onClick={() => setMergeCandidate(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <h3>Merge with existing spool?</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginBottom: "1rem" }}>
+              A spool with the same brand, material, color, and batch code already exists:
+            </p>
+            <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "0.85rem", marginBottom: "1rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.4rem" }}>
+                <div style={{ width: 14, height: 14, borderRadius: 3, background: mergeCandidate.color?.hex || "#ccc", border: "1px solid var(--border)" }} />
+                <strong>{mergeCandidate.brand?.name} {mergeCandidate.material?.name} {mergeCandidate.color?.name}</strong>
+              </div>
+              <div style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                Batch: <strong>{mergeCandidate.batchCode}</strong> · Currently {mergeCandidate.remainingGrams}g / {mergeCandidate.initialGrams}g
+              </div>
+            </div>
+            <p style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
+              <strong>Merge:</strong> Add {f.initialGrams}g and €{((+f.pricePaidCents || 0) / 100).toFixed(2)} to the existing spool. Cost/kg becomes a weighted average. Recommended for "+1 roll of the same batch".
+            </p>
+            <p style={{ fontSize: "0.85rem", marginBottom: "1rem" }}>
+              <strong>Create new:</strong> Keep them as two separate spools. Use this if the batch codes are actually different.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", flexWrap: "wrap" }}>
+              <button className="btn btn-outline btn-sm" onClick={() => setMergeCandidate(null)}>Cancel</button>
+              <button className="btn btn-outline btn-sm" onClick={() => { setMergeCandidate(null); actuallySave(); }}>Create New Spool</button>
+              <button className="btn" disabled={busy} onClick={doMerge}>{busy ? "Merging…" : "Merge into Existing"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -393,6 +481,9 @@ function PricingTab() {
   const [materials, setMaterials] = useState<any[]>([]);
   const [colors, setColors] = useState<any[]>([]);
   const [editing, setEditing] = useState<any>(null);
+  const [autoBusy, setAutoBusy] = useState(false);
+  const [autoResult, setAutoResult] = useState<any>(null);
+  const [refreshExisting, setRefreshExisting] = useState(false);
 
   async function load() {
     setCombos(await api("/inventory/material-colors").catch(() => []));
@@ -400,6 +491,25 @@ function PricingTab() {
     setColors(await api("/inventory/colors").catch(() => []));
   }
   useEffect(() => { load(); }, []);
+
+  async function autoCalculate() {
+    const msg = refreshExisting
+      ? "Scan all spools and REFRESH every combo's list price to the highest cost/kg? This will overwrite prices you've manually set."
+      : "Scan all spools and create missing combos? Existing prices stay untouched.";
+    if (!confirm(msg)) return;
+    setAutoBusy(true);
+    try {
+      const r = await api("/inventory/material-colors/auto-price", {
+        method: "POST",
+        body: JSON.stringify({ refreshExisting }),
+      });
+      setAutoResult(r);
+      await load();
+      setTimeout(() => setAutoResult(null), 5000);
+    } catch (e: any) {
+      alert("Failed: " + e.message);
+    } finally { setAutoBusy(false); }
+  }
 
   async function save(row: any) {
     const body = {
@@ -422,10 +532,24 @@ function PricingTab() {
     <div className="panel">
       <div className="panel-head">
         <h3>List Prices & Low-Stock Thresholds ({combos.length})</h3>
-        <button className="btn" onClick={() => setEditing({ _isNew: true, listPriceKgCents: 2500, lowStockGrams: 500 })}>+ Add Combo</button>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", fontSize: "0.78rem", color: "var(--text-muted)", margin: 0 }}>
+            <input type="checkbox" checked={refreshExisting} onChange={(e) => setRefreshExisting(e.target.checked)} style={{ width: "auto", margin: 0 }} />
+            Also refresh existing
+          </label>
+          <button className="btn btn-outline" disabled={autoBusy} onClick={autoCalculate} title="Scan spools, create missing combos from highest cost/kg">
+            {autoBusy ? "Calculating…" : "⚡ Auto-Calculate"}
+          </button>
+          <button className="btn" onClick={() => setEditing({ _isNew: true, listPriceKgCents: 2500, lowStockGrams: 500 })}>+ Add Combo</button>
+        </div>
       </div>
+      {autoResult && (
+        <div style={{ background: "#dcfce7", color: "#166534", padding: "0.75rem 1rem", borderRadius: 8, marginBottom: "1rem", fontSize: "0.88rem" }}>
+          ✓ Scanned {autoResult.totalSpoolGroups} spool groups — {autoResult.created} created, {autoResult.updated} updated, {autoResult.skipped} skipped
+        </div>
+      )}
       <div className="help" style={{ marginBottom: "1rem" }}>
-        List price is what customers see in quotes for this material+color. Low-stock threshold triggers alerts when total stock drops below this value.
+        List price is what customers see in quotes. Low-stock threshold triggers alerts when total drops below it. Click <strong>Auto-Calculate</strong> to scan your spools and create missing combos using the highest cost/kg. Nylon/TPU/PU default to 200g alert threshold, everything else to 500g.
       </div>
       {combos.length === 0 ? (
         <div className="empty"><p>No pricing rules yet. Add combinations of materials and colors with their list prices.</p></div>
