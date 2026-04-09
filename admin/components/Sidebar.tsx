@@ -20,6 +20,7 @@ const NAV = [
     section: "Production",
     items: [
       { href: "/printers/", label: "Printers", icon: "▲" },
+      { href: "/printer-control/", label: "Printer Control", icon: "◈" },
       { href: "/print-queue/", label: "Print Queue", icon: "⇉" },
       { href: "/inventory/", label: "Inventory", icon: "◉" },
     ],

@@ -19,6 +19,7 @@ import { stlRouter } from "./routes/stl";
 import { inventoryRouter } from "./routes/inventory";
 import { inventoryIORouter } from "./routes/inventoryIO";
 import { printersRouter } from "./routes/printers";
+import { printerControlRouter } from "./routes/printerControl";
 import { printQueueRouter } from "./routes/printQueue";
 import { paymentsRouter } from "./routes/payments";
 import { settingsRouter } from "./routes/settings";
@@ -48,7 +49,6 @@ app.use(morgan("combined"));
 const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000 });
 app.use("/api", apiLimiter);
 
-// ─── Static image serving (BEFORE the Next proxy) ───
 app.use("/uploads/images", express.static(IMAGE_DIR, {
   maxAge: "30d",
   immutable: true,
@@ -67,6 +67,7 @@ app.use("/api/stl", stlRouter);
 app.use("/api/inventory", inventoryRouter);
 app.use("/api/inventory", inventoryIORouter);
 app.use("/api/printers", printersRouter);
+app.use("/api/printer-control", printerControlRouter);
 app.use("/api/print-queue", printQueueRouter);
 app.use("/api/payments", paymentsRouter);
 app.use("/api/settings", settingsRouter);
