@@ -27,6 +27,8 @@ import { statsRouter } from "./routes/stats";
 import { adminRouter } from "./routes/admin";
 import { shippingRouter } from "./routes/shipping";
 import { invoicesRouter } from "./routes/invoices";
+import { imagesRouter } from "./routes/images";
+import { IMAGE_DIR } from "./services/images";
 import { startMoonrakerWorker } from "./workers/moonraker";
 
 const app = express();
@@ -36,7 +38,7 @@ const FRONTEND_PORT = 3001;
 const APP_DIR = process.env.APP_DIR || path.resolve(__dirname, "../..");
 
 app.set("trust proxy", 1);
-app.use(helmet({ contentSecurityPolicy: false }));
+app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false }));
 app.use(cors({ origin: true, credentials: true }));
 app.use("/api", express.json({ limit: "10mb" }));
 app.use("/api", express.urlencoded({ extended: true }));
@@ -45,6 +47,15 @@ app.use(morgan("combined"));
 
 const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000 });
 app.use("/api", apiLimiter);
+
+// ─── Static image serving (BEFORE the Next proxy) ───
+app.use("/uploads/images", express.static(IMAGE_DIR, {
+  maxAge: "30d",
+  immutable: true,
+  setHeaders: (res) => {
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  },
+}));
 
 app.use("/api/auth", authRouter);
 app.use("/api/users", userRouter);
@@ -64,6 +75,7 @@ app.use("/api/stats", statsRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/shipping", shippingRouter);
 app.use("/api/invoices", invoicesRouter);
+app.use("/api/images", imagesRouter);
 app.get("/api/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
 const ADMIN_DIST = path.resolve(APP_DIR, "admin/out");

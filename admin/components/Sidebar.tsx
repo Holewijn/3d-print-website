@@ -36,6 +36,7 @@ const NAV = [
     section: "Configuration",
     items: [
       { href: "/appearance/", label: "Appearance", icon: "✦" },
+      { href: "/media/", label: "Media Library", icon: "▣" },
       { href: "/stats/", label: "Statistics", icon: "≡" },
       { href: "/settings/", label: "Settings", icon: "⚙" },
       { href: "/update/", label: "System Update", icon: "↻" },
