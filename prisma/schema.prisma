@@ -134,6 +134,7 @@ model Quote {
   totalCents        Int?
   status            QuoteStatus @default(NEW)
   adminNote         String?
+  customerNote      String?   
   order             Order?
   printJob          PrintJob?
   createdAt         DateTime    @default(now())
