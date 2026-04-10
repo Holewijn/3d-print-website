@@ -142,7 +142,21 @@ export default function OrdersAdmin() {
                 {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
-
+   {viewing.stlUploadId && (
+     <div style={{ marginBottom: "1.5rem", padding: "0.85rem 1rem", background: "var(--bg-elev-2)", borderRadius: 8 }}>
+       <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700, marginBottom: "0.4rem" }}>
+         Attached STL File
+       </div>
+       
+         href={`/api/stl/${viewing.stlUploadId}/download`}
+         className="btn btn-sm btn-outline"
+         target="_blank"
+         rel="noopener"
+       >
+         ↓ Download STL
+       </a>
+     </div>
+   )}
             <div style={{ borderTop: "1px solid var(--border)", paddingTop: "1rem", marginBottom: "1rem" }}>
               <strong style={{ display: "block", marginBottom: "0.75rem" }}>Documents</strong>
               <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
