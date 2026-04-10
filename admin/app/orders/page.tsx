@@ -147,12 +147,7 @@ export default function OrdersAdmin() {
                 <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700, marginBottom: "0.4rem" }}>
                   Attached STL File
                 </div>
-                
-                  href={`/api/stl/${viewing.stlUploadId}/download`}
-                  className="btn btn-sm btn-outline"
-                  target="_blank"
-                  rel="noopener"
-                >
+                <a href={`/api/stl/${viewing.stlUploadId}/download`} className="btn btn-sm btn-outline" target="_blank" rel="noopener">
                   ↓ Download STL
                 </a>
               </div>
