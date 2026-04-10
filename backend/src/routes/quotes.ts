@@ -179,7 +179,7 @@ quotesRouter.post("/:id/submit-for-approval", async (req, res) => {
     }
     if (stlLink) {
       lines.push(`─── STL File ───`);
-      lines.push(`Original filename: ${q.stlUpload?.originalName || "unknown"}`);
+      lines.push(`Original filename: ${q.stlUpload?.filename || "unknown"}`);
       lines.push(`Download: ${stlLink}`);
       lines.push(``);
     }
