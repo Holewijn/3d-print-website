@@ -86,6 +86,8 @@ model Order {
   quote           Quote?      @relation(fields: [quoteId], references: [id])
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
+  stlUploadId  String?
+  stlUpload    StlUpload?
 }
 
 enum OrderStatus {
@@ -159,6 +161,7 @@ model StlUpload {
   sha256     String
   createdAt  DateTime @default(now())
   quotes     Quote[]
+  orders       Order[]
 }
 
 // Add this model to your existing prisma/schema.prisma
@@ -208,6 +211,7 @@ model Material {
   alerts          FilamentAlert[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
+  description  String?     @db.Text 
 }
 
 model Color {
