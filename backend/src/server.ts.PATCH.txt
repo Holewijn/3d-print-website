@@ -1,0 +1,24 @@
+// PATCH for backend/src/server.ts
+//
+// Add these two lines to call the material descriptions seed on startup.
+//
+// 1. Near the top of the file where other imports live (e.g. after
+//    the moonraker worker import), ADD:
+//
+//      import { seedMaterialDescriptions } from "./services/materialDescriptions";
+//
+// 2. Inside the app.listen() callback, next to startMoonrakerWorker(), ADD:
+//
+//      seedMaterialDescriptions();
+//
+// Final listen block should look like:
+//
+//      app.listen(PORT, HOST, () => {
+//        console.log(`[print3d] backend listening on http://${HOST}:${PORT}`);
+//        startMoonrakerWorker();
+//        seedMaterialDescriptions();   // ← ADD THIS LINE
+//        setTimeout(startNext, 1000);
+//      });
+//
+// That's it — no other server.ts changes needed. The seed is idempotent
+// and only fills empty description fields, so it's safe to run every boot.

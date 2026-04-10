@@ -38,6 +38,7 @@ quotesRouter.get("/available-combos", async (_req, res) => {
     out.push({
       materialId: c.materialId,
       materialName: c.material.name,
+      materialDescription: c.material.description || null,
       densityGcm3: c.material.densityGcm3,
       colorId: c.colorId,
       colorName: c.color.name,
@@ -65,14 +66,31 @@ quotesRouter.post("/", async (req: AuthedRequest, res) => {
   const material = await prisma.material.findUnique({ where: { id: materialId } });
   if (!material) return res.status(400).json({ error: "Material not found" });
 
-  const color = colorId ? await prisma.color.findUnique({ where: { id: colorId } }) : null;
-  if (!color) return res.status(400).json({ error: "Color required" });
-
-  // Look up the list price for this combo
-  const mc = await prisma.materialColor.findUnique({
-    where: { materialId_colorId: { materialId: material.id, colorId: color.id } },
-  });
-  if (!mc) return res.status(400).json({ error: "This material+color combination is not currently offered" });
+  // Color is OPTIONAL — if customer doesn't pick one, they must describe it in the note
+  let color = null;
+  let mc = null;
+  if (colorId) {
+    color = await prisma.color.findUnique({ where: { id: colorId } });
+    if (!color) return res.status(400).json({ error: "Color not found" });
+    mc = await prisma.materialColor.findUnique({
+      where: { materialId_colorId: { materialId: material.id, colorId: color.id } },
+    });
+    if (!mc) return res.status(400).json({ error: "This material+color combination is not currently offered" });
+  } else {
+    // No color selected — require the customer to describe it in the note
+    if (!customerNote || customerNote.trim().length < 3) {
+      return res.status(400).json({
+        error: "Please either pick a color or describe the desired color in the note field.",
+      });
+    }
+    // Use the average/fallback list price for the material when color is unset
+    const avg = await prisma.materialColor.findFirst({
+      where: { materialId: material.id },
+      orderBy: { listPriceKgCents: "desc" },
+    });
+    if (!avg) return res.status(400).json({ error: "No pricing available for this material yet — please contact us" });
+    mc = avg;
+  }
 
   const energyCents = await getEnergyPriceCentsKwh();
   const marginPct = await getSetting<number>("pricing.marginPct", 25);
@@ -104,7 +122,7 @@ quotesRouter.post("/", async (req: AuthedRequest, res) => {
       stlUploadId,
       material: material.name,
       materialId: material.id,
-      colorId: color.id,
+      colorId: color?.id || null,
       infillPct: infillPct ?? 20,
       layerHeightMm: layerHeightMm ?? 0.2,
       volumeCm3: result.volumeCm3,
@@ -123,13 +141,74 @@ quotesRouter.post("/", async (req: AuthedRequest, res) => {
   res.json(quote);
 });
 
+// ─── Public: submit a quote for admin approval ─────────
+// Creates a ContactMessage in the inbox so admin gets a notification,
+// with the full quote details and an STL download link embedded.
+quotesRouter.post("/:id/submit-for-approval", async (req, res) => {
+  try {
+    const q = await prisma.quote.findUnique({
+      where: { id: req.params.id },
+      include: { stlUpload: true, materialRef: true, colorRef: true },
+    });
+    if (!q) return res.status(404).json({ error: "Quote not found" });
+
+    const base = process.env.PUBLIC_URL || "";
+    const stlLink = q.stlUploadId ? `${base}/api/stl/${q.stlUploadId}/download` : null;
+    const adminLink = `${base}/admin/quotes/`;
+
+    const lines = [
+      `A customer has submitted a quote for approval.`,
+      ``,
+      `─── Quote Details ───`,
+      `Quote ID: #${q.id.slice(-8)}`,
+      `Customer: ${q.email}`,
+      `Material: ${q.materialRef?.name || q.material}`,
+      `Color: ${q.colorRef?.name || "(not selected — see customer note)"}`,
+      `Infill: ${q.infillPct}%`,
+      `Layer Height: ${q.layerHeightMm}mm`,
+      `Volume: ${q.volumeCm3} cm³`,
+      `Weight: ${q.weightG} g`,
+      `Print time: ${q.printMinutes ? Math.floor(q.printMinutes / 60) + "h " + (q.printMinutes % 60) + "m" : "—"}`,
+      `Total price: €${((q.totalCents || 0) / 100).toFixed(2)}`,
+      ``,
+    ];
+    if (q.customerNote) {
+      lines.push(`─── Customer Note ───`);
+      lines.push(q.customerNote);
+      lines.push(``);
+    }
+    if (stlLink) {
+      lines.push(`─── STL File ───`);
+      lines.push(`Original filename: ${q.stlUpload?.originalName || "unknown"}`);
+      lines.push(`Download: ${stlLink}`);
+      lines.push(``);
+    }
+    lines.push(`View in admin: ${adminLink}`);
+
+    await prisma.contactMessage.create({
+      data: {
+        name: q.email.split("@")[0],
+        email: q.email,
+        subject: `Quote approval request — #${q.id.slice(-8)} (€${((q.totalCents || 0) / 100).toFixed(2)})`,
+        message: lines.join("\n"),
+      },
+    });
+
+    // Keep the quote in PRICED status — admin will manually move it forward
+    res.json({ ok: true, quoteId: q.id });
+  } catch (e: any) {
+    console.error("submit-for-approval error", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── Public: pay for a quote (creates Order + Mollie session) ─
 quotesRouter.post("/:id/checkout", async (req: AuthedRequest, res) => {
   const q = await prisma.quote.findUnique({ where: { id: req.params.id } });
   if (!q || !q.totalCents) return res.status(400).json({ error: "Quote not priced" });
   if (q.status === "CONVERTED") return res.status(400).json({ error: "Quote already converted" });
 
-  // Create the order linked to the quote
+  // Create the order linked to the quote + attach STL
   const order = await prisma.order.create({
     data: {
       userId: q.userId,
@@ -138,11 +217,11 @@ quotesRouter.post("/:id/checkout", async (req: AuthedRequest, res) => {
       subtotalCents: q.totalCents,
       shippingCents: 0,
       quoteId: q.id,
+      stlUploadId: q.stlUploadId,
       items: { create: [{ name: `3D Print Quote #${q.id.slice(-8)}`, priceCents: q.totalCents, qty: 1 }] },
     },
   });
 
-  // Create Mollie payment
   const base = process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`;
   try {
     const payment = await createMolliePayment({
@@ -182,6 +261,7 @@ quotesRouter.put("/:id", requireAuth, requireAdmin, async (req, res) => {
   res.json(await prisma.quote.update({ where: { id: req.params.id }, data: { status, adminNote, totalCents, marginCents } }));
 });
 
+// ─── Admin: convert to order (attaches STL) ───────────
 quotesRouter.post("/:id/convert-to-order", requireAuth, requireAdmin, async (req, res) => {
   const q = await prisma.quote.findUnique({ where: { id: req.params.id } });
   if (!q || !q.totalCents) return res.status(400).json({ error: "Quote not priced" });
@@ -192,6 +272,7 @@ quotesRouter.post("/:id/convert-to-order", requireAuth, requireAdmin, async (req
       totalCents: q.totalCents,
       subtotalCents: q.totalCents,
       quoteId: q.id,
+      stlUploadId: q.stlUploadId,
       items: { create: [{ name: `Print quote ${q.id.slice(-8)}`, priceCents: q.totalCents, qty: 1 }] },
     },
   });
