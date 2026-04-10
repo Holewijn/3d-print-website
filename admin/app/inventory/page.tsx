@@ -705,6 +705,7 @@ function BrandsTab() {
   );
 }
 
+
 // ─── Materials ───────────────────────────────────────
 function MaterialsTab() {
   const [items, setItems] = useState<any[]>([]);
@@ -720,6 +721,7 @@ function MaterialsTab() {
       bedTempC: m.bedTempC ? +m.bedTempC : null,
       abrasive: !!m.abrasive,
       notes: m.notes || null,
+      description: m.description || null,
       active: m.active !== false,
     };
     if (m._isNew) await api("/inventory/materials", { method: "POST", body: JSON.stringify(body) });
@@ -768,7 +770,17 @@ function MaterialsTab() {
                 <div><label>Bed Temp (°C)</label><input type="number" value={editing.bedTempC || ""} onChange={(e) => setEditing({ ...editing, bedTempC: e.target.value })} /></div>
               </div>
               <div><label><input type="checkbox" checked={!!editing.abrasive} onChange={(e) => setEditing({ ...editing, abrasive: e.target.checked })} style={{ width: "auto", marginRight: "0.5rem" }} />Abrasive (needs hardened nozzle)</label></div>
-              <div><label>Notes</label><textarea rows={2} value={editing.notes || ""} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></div>
+              <div>
+                <label>Customer Description</label>
+                <textarea
+                  rows={3}
+                  value={editing.description || ""}
+                  onChange={(e) => setEditing({ ...editing, description: e.target.value })}
+                  placeholder="Shown on the public quote page when a customer picks this material. Describe its strengths and typical uses."
+                />
+                <div className="help">This text appears as a blue info box on the quote form when the customer picks this material.</div>
+              </div>
+              <div><label>Notes (admin)</label><textarea rows={2} value={editing.notes || ""} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></div>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
                 <button className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Cancel</button>
                 <button className="btn" onClick={() => save(editing)}>Save</button>
