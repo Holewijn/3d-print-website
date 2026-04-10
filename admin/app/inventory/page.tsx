@@ -269,8 +269,6 @@ function SpoolEditor({ spool, brands, materials, colors, onClose, onSaved }: any
   async function save() {
     setBusy(true); setErr("");
     try {
-      // On NEW spools, check first if an existing (brand+material+color+batch)
-      // combo exists. If yes, prompt the user to merge instead of creating.
       if (isNew && f.batchCode) {
         const match = await api("/inventory/spools/find-mergeable", {
           method: "POST",
@@ -601,13 +599,11 @@ function PricingTab() {
               </div>
               <div>
                 <label>List Price (cents per kg)</label>
-                <input type="number" value={editing.listPriceKgCents} onChange={(e) => setEditing({ ...editing, listPriceKgCents: +e.target.value })} />
-                <div className="help">2500 = €25.00/kg</div>
+                <input type="number" value={editing.listPriceKgCents || 0} onChange={(e) => setEditing({ ...editing, listPriceKgCents: e.target.value })} />
               </div>
               <div>
-                <label>Low-Stock Threshold (grams)</label>
-                <input type="number" value={editing.lowStockGrams} onChange={(e) => setEditing({ ...editing, lowStockGrams: +e.target.value })} />
-                <div className="help">Alert when total stock for this combo drops below this</div>
+                <label>Low Stock Alert (grams)</label>
+                <input type="number" value={editing.lowStockGrams || 0} onChange={(e) => setEditing({ ...editing, lowStockGrams: e.target.value })} />
               </div>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
                 <button className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Cancel</button>
@@ -621,78 +617,45 @@ function PricingTab() {
   );
 }
 
-// ─── Brands ──────────────────────────────────────────
+// ─── Brands ───────────────────────────────────────────
 function BrandsTab() {
   const [brands, setBrands] = useState<any[]>([]);
   const [editing, setEditing] = useState<any>(null);
-
   async function load() { setBrands(await api("/inventory/brands").catch(() => [])); }
   useEffect(() => { load(); }, []);
 
-  async function save(b: any) {
-    const body = {
-      name: b.name,
-      websiteUrl: b.websiteUrl || null,
-      logoUrl: b.logoUrl || null,
-      supportEmail: b.supportEmail || null,
-      notes: b.notes || null,
-      active: b.active !== false,
-    };
-    if (b._isNew) await api("/inventory/brands", { method: "POST", body: JSON.stringify(body) });
-    else await api(`/inventory/brands/${b.id}`, { method: "PUT", body: JSON.stringify(body) });
-    setEditing(null); load();
-  }
-  async function del(id: string) {
-    if (!confirm("Delete this brand?")) return;
-    await api(`/inventory/brands/${id}`, { method: "DELETE" }); load();
+  async function save(row: any) {
+    const body = { name: row.name, notes: row.notes || null };
+    if (row.id) await api(`/inventory/brands/${row.id}`, { method: "PUT", body: JSON.stringify(body) });
+    else await api("/inventory/brands", { method: "POST", body: JSON.stringify(body) });
+    setEditing(null);
+    load();
   }
   return (
     <div className="panel">
       <div className="panel-head">
         <h3>Brands ({brands.length})</h3>
-        <button className="btn" onClick={() => setEditing({ _isNew: true, active: true })}>+ New Brand</button>
+        <button className="btn" onClick={() => setEditing({ name: "" })}>+ Add Brand</button>
       </div>
-      {brands.length === 0 ? <div className="empty"><p>No brands yet.</p></div> : (
-        <table>
-          <thead><tr><th>Name</th><th>Website</th><th>Support</th><th>Active</th><th></th></tr></thead>
-          <tbody>
-            {brands.map((b) => (
-              <tr key={b.id}>
-                <td>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-                    {b.logoUrl && <img src={b.logoUrl} alt="" style={{ width: 28, height: 28, borderRadius: 4, objectFit: "contain" }} />}
-                    <strong>{b.name}</strong>
-                  </div>
-                </td>
-                <td>{b.websiteUrl ? <a href={b.websiteUrl} target="_blank" style={{ color: "var(--primary)" }}>{b.websiteUrl}</a> : "—"}</td>
-                <td>{b.supportEmail || "—"}</td>
-                <td>{b.active ? "✓" : "—"}</td>
-                <td style={{ textAlign: "right" }}>
-                  <button className="btn btn-sm btn-outline" onClick={() => setEditing(b)}>Edit</button>{" "}
-                  <button className="btn btn-sm btn-danger" onClick={() => del(b.id)}>×</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
+      <table>
+        <thead><tr><th>Name</th><th>Notes</th><th></th></tr></thead>
+        <tbody>
+          {brands.map((b) => (
+            <tr key={b.id}>
+              <td><strong>{b.name}</strong></td>
+              <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{b.notes || "—"}</td>
+              <td style={{ textAlign: "right" }}><button className="btn btn-sm btn-outline" onClick={() => setEditing(b)}>Edit</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
       {editing && (
         <div className="modal-bg" onClick={() => setEditing(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>{editing._isNew ? "New Brand" : "Edit Brand"}</h3>
+            <h3>{editing.id ? "Edit Brand" : "New Brand"}</h3>
             <div className="form">
-              <div><label>Name *</label><input value={editing.name || ""} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
-              <div><label>Website</label><input value={editing.websiteUrl || ""} onChange={(e) => setEditing({ ...editing, websiteUrl: e.target.value })} placeholder="https://" /></div>
-              <ImagePicker
-                label="Brand Logo"
-                value={editing.logoUrl || ""}
-                onChange={(v) => setEditing({ ...editing, logoUrl: v })}
-                help="Upload from your computer or pick from the media library."
-              />
-              <div><label>Support Email</label><input value={editing.supportEmail || ""} onChange={(e) => setEditing({ ...editing, supportEmail: e.target.value })} /></div>
-              <div><label>Notes</label><textarea rows={3} value={editing.notes || ""} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></div>
-              <div><label><input type="checkbox" checked={editing.active !== false} onChange={(e) => setEditing({ ...editing, active: e.target.checked })} style={{ width: "auto", marginRight: "0.5rem" }} />Active</label></div>
+              <div><label>Name</label><input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} autoFocus /></div>
+              <div><label>Notes</label><textarea value={editing.notes || ""} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></div>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
                 <button className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Cancel</button>
                 <button className="btn" onClick={() => save(editing)}>Save</button>
@@ -705,12 +668,11 @@ function BrandsTab() {
   );
 }
 
-
-// ─── Materials ───────────────────────────────────────
+// ─── Materials ────────────────────────────────────────
 function MaterialsTab() {
-  const [items, setItems] = useState<any[]>([]);
+  const [materials, setMaterials] = useState<any[]>([]);
   const [editing, setEditing] = useState<any>(null);
-  async function load() { setItems(await api("/inventory/materials").catch(() => [])); }
+  async function load() { setMaterials(await api("/inventory/materials").catch(() => [])); }
   useEffect(() => { load(); }, []);
 
   async function save(m: any) {
@@ -721,55 +683,59 @@ function MaterialsTab() {
       bedTempC: m.bedTempC ? +m.bedTempC : null,
       abrasive: !!m.abrasive,
       notes: m.notes || null,
-      description: m.description || null,
+      description: m.description || null, // ← PATCHED
       active: m.active !== false,
     };
-    if (m._isNew) await api("/inventory/materials", { method: "POST", body: JSON.stringify(body) });
-    else await api(`/inventory/materials/${m.id}`, { method: "PUT", body: JSON.stringify(body) });
-    setEditing(null); load();
-  }
-  async function del(id: string) {
-    if (!confirm("Delete this material?")) return;
-    await api(`/inventory/materials/${id}`, { method: "DELETE" }); load();
+    if (m.id) await api(`/inventory/materials/${m.id}`, { method: "PUT", body: JSON.stringify(body) });
+    else await api("/inventory/materials", { method: "POST", body: JSON.stringify(body) });
+    setEditing(null);
+    load();
   }
   return (
     <div className="panel">
       <div className="panel-head">
-        <h3>Materials ({items.length})</h3>
-        <button className="btn" onClick={() => setEditing({ _isNew: true, densityGcm3: 1.24, active: true })}>+ New Material</button>
+        <h3>Materials ({materials.length})</h3>
+        <button className="btn" onClick={() => setEditing({ name: "", densityGcm3: 1.24, active: true })}>+ Add Material</button>
       </div>
-      {items.length === 0 ? <div className="empty"><p>No materials yet.</p></div> : (
-        <table>
-          <thead><tr><th>Name</th><th>Density</th><th>Print / Bed Temp</th><th>Abrasive</th><th></th></tr></thead>
-          <tbody>
-            {items.map((m) => (
-              <tr key={m.id}>
-                <td><strong>{m.name}</strong></td>
-                <td>{m.densityGcm3} g/cm³</td>
-                <td>{m.printTempC || "—"}°C / {m.bedTempC || "—"}°C</td>
-                <td>{m.abrasive ? "Yes" : "No"}</td>
-                <td style={{ textAlign: "right" }}>
-                  <button className="btn btn-sm btn-outline" onClick={() => setEditing(m)}>Edit</button>{" "}
-                  <button className="btn btn-sm btn-danger" onClick={() => del(m.id)}>×</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
+      <table>
+        <thead><tr><th>Name</th><th>Density</th><th>Temps</th><th>Notes</th><th></th></tr></thead>
+        <tbody>
+          {materials.map((m) => (
+            <tr key={m.id} style={{ opacity: m.active ? 1 : 0.5 }}>
+              <td>
+                <strong>{m.name}</strong>
+                {m.abrasive && <span className="badge badge-warning" style={{ marginLeft: "0.5rem" }}>Abrasive</span>}
+                {!m.active && <span className="badge" style={{ marginLeft: "0.5rem" }}>Inactive</span>}
+              </td>
+              <td>{m.densityGcm3} g/cm³</td>
+              <td style={{ fontSize: "0.85rem" }}>{m.printTempC || "?"}°C / {m.bedTempC || "?"}°C</td>
+              <td style={{ color: "var(--text-muted)", fontSize: "0.85rem", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.notes || "—"}</td>
+              <td style={{ textAlign: "right" }}><button className="btn btn-sm btn-outline" onClick={() => setEditing(m)}>Edit</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
       {editing && (
         <div className="modal-bg" onClick={() => setEditing(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>{editing._isNew ? "New Material" : "Edit Material"}</h3>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <h3>{editing.id ? "Edit Material" : "New Material"}</h3>
             <div className="form">
-              <div><label>Name *</label><input value={editing.name || ""} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
-              <div><label>Density (g/cm³)</label><input type="number" step="0.01" value={editing.densityGcm3 || 1.24} onChange={(e) => setEditing({ ...editing, densityGcm3: e.target.value })} /></div>
+              <div><label>Name (e.g. PLA+)</label><input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
+              <div className="form-row">
+                <div><label>Density (g/cm³)</label><input type="number" step="0.01" value={editing.densityGcm3} onChange={(e) => setEditing({ ...editing, densityGcm3: e.target.value })} /></div>
+                <div style={{ alignSelf: "center", paddingTop: "1rem" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", margin: 0 }}>
+                    <input type="checkbox" checked={!!editing.abrasive} onChange={(e) => setEditing({ ...editing, abrasive: e.target.checked })} style={{ width: "auto" }} />
+                    Abrasive (CF/GF/Glow)
+                  </label>
+                </div>
+              </div>
               <div className="form-row">
                 <div><label>Print Temp (°C)</label><input type="number" value={editing.printTempC || ""} onChange={(e) => setEditing({ ...editing, printTempC: e.target.value })} /></div>
                 <div><label>Bed Temp (°C)</label><input type="number" value={editing.bedTempC || ""} onChange={(e) => setEditing({ ...editing, bedTempC: e.target.value })} /></div>
               </div>
-              <div><label><input type="checkbox" checked={!!editing.abrasive} onChange={(e) => setEditing({ ...editing, abrasive: e.target.checked })} style={{ width: "auto", marginRight: "0.5rem" }} />Abrasive (needs hardened nozzle)</label></div>
+              
+              {/* PATCHED: Customer Description field */}
               <div>
                 <label>Customer Description</label>
                 <textarea
@@ -778,9 +744,15 @@ function MaterialsTab() {
                   onChange={(e) => setEditing({ ...editing, description: e.target.value })}
                   placeholder="Shown on the public quote page when a customer picks this material. Describe its strengths and typical uses."
                 />
-                <div className="help">This text appears as a blue info box on the quote form when the customer picks this material.</div>
+                <div className="help">This text appears as a blue info box on the quote form.</div>
               </div>
-              <div><label>Notes (admin)</label><textarea rows={2} value={editing.notes || ""} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></div>
+
+              <div><label>Notes (admin)</label><textarea value={editing.notes || ""} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></div>
+              
+              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <input type="checkbox" checked={editing.active !== false} onChange={(e) => setEditing({ ...editing, active: e.target.checked })} style={{ width: "auto" }} />
+                Visible in selection menus
+              </label>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
                 <button className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Cancel</button>
                 <button className="btn" onClick={() => save(editing)}>Save</button>
@@ -793,63 +765,50 @@ function MaterialsTab() {
   );
 }
 
-// ─── Colors ──────────────────────────────────────────
+// ─── Colors ───────────────────────────────────────────
 function ColorsTab() {
-  const [items, setItems] = useState<any[]>([]);
+  const [colors, setColors] = useState<any[]>([]);
   const [editing, setEditing] = useState<any>(null);
-  async function load() { setItems(await api("/inventory/colors").catch(() => [])); }
+  async function load() { setColors(await api("/inventory/colors").catch(() => [])); }
   useEffect(() => { load(); }, []);
 
   async function save(c: any) {
-    const body = {
-      name: c.name,
-      hex: c.hex || "#000000",
-      swatchUrl: c.swatchUrl || null,
-    };
-    if (c._isNew) await api("/inventory/colors", { method: "POST", body: JSON.stringify(body) });
-    else await api(`/inventory/colors/${c.id}`, { method: "PUT", body: JSON.stringify(body) });
-    setEditing(null); load();
-  }
-  async function del(id: string) {
-    if (!confirm("Delete this color?")) return;
-    await api(`/inventory/colors/${id}`, { method: "DELETE" }); load();
+    const body = { name: c.name, hex: c.hex };
+    if (c.id) await api(`/inventory/colors/${c.id}`, { method: "PUT", body: JSON.stringify(body) });
+    else await api("/inventory/colors", { method: "POST", body: JSON.stringify(body) });
+    setEditing(null);
+    load();
   }
   return (
     <div className="panel">
       <div className="panel-head">
-        <h3>Colors ({items.length})</h3>
-        <button className="btn" onClick={() => setEditing({ _isNew: true, hex: "#000000" })}>+ New Color</button>
+        <h3>Colors ({colors.length})</h3>
+        <button className="btn" onClick={() => setEditing({ name: "", hex: "#cccccc" })}>+ Add Color</button>
       </div>
-      {items.length === 0 ? <div className="empty"><p>No colors yet.</p></div> : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "0.75rem" }}>
-          {items.map((c) => (
-            <div key={c.id} style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "1rem", textAlign: "center" }}>
-              <div style={{ width: 60, height: 60, borderRadius: 30, background: c.hex, border: "1px solid var(--border)", margin: "0 auto 0.75rem" }} />
-              <div style={{ fontWeight: 700 }}>{c.name}</div>
-              <div style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontFamily: "monospace" }}>{c.hex}</div>
-              <div style={{ marginTop: "0.75rem", display: "flex", gap: "0.4rem", justifyContent: "center" }}>
-                <button className="btn btn-sm btn-outline" onClick={() => setEditing(c)}>Edit</button>
-                <button className="btn btn-sm btn-danger" onClick={() => del(c.id)}>×</button>
-              </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "0.75rem" }}>
+        {colors.map((c) => (
+          <div key={c.id} className="stat-card" style={{ display: "flex", alignItems: "center", gap: "0.75rem", cursor: "pointer" }} onClick={() => setEditing(c)}>
+            <div style={{ width: 24, height: 24, borderRadius: 6, background: c.hex, border: "1px solid var(--border)" }} />
+            <div>
+              <div style={{ fontWeight: 600 }}>{c.name}</div>
+              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontFamily: "monospace" }}>{c.hex.toUpperCase()}</div>
             </div>
-          ))}
-        </div>
-      )}
-
+          </div>
+        ))}
+      </div>
       {editing && (
         <div className="modal-bg" onClick={() => setEditing(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>{editing._isNew ? "New Color" : "Edit Color"}</h3>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 360 }}>
+            <h3>{editing.id ? "Edit Color" : "New Color"}</h3>
             <div className="form">
-              <div><label>Name *</label><input value={editing.name || ""} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Black, White, Galaxy Purple…" /></div>
+              <div><label>Name (e.g. Galaxy Black)</label><input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
               <div>
-                <label>Hex Color</label>
+                <label>Color Hex</label>
                 <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <input type="color" value={editing.hex || "#000000"} onChange={(e) => setEditing({ ...editing, hex: e.target.value })} style={{ width: 60, padding: 0 }} />
-                  <input value={editing.hex || ""} onChange={(e) => setEditing({ ...editing, hex: e.target.value })} placeholder="#000000" style={{ flex: 1 }} />
+                  <input type="color" value={editing.hex} onChange={(e) => setEditing({ ...editing, hex: e.target.value })} style={{ width: 50, padding: 2, height: 38 }} />
+                  <input value={editing.hex} onChange={(e) => setEditing({ ...editing, hex: e.target.value })} style={{ fontFamily: "monospace" }} />
                 </div>
               </div>
-              <div><label>Swatch Image URL (optional)</label><input value={editing.swatchUrl || ""} onChange={(e) => setEditing({ ...editing, swatchUrl: e.target.value })} /></div>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
                 <button className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Cancel</button>
                 <button className="btn" onClick={() => save(editing)}>Save</button>
@@ -862,51 +821,31 @@ function ColorsTab() {
   );
 }
 
-// ─── Movements history ───────────────────────────────
+// ─── Movements ────────────────────────────────────────
 function MovementsTab() {
-  const [movements, setMovements] = useState<any[]>([]);
-  const [reason, setReason] = useState("");
-  async function load() {
-    const q = reason ? `?reason=${reason}` : "";
-    setMovements(await api("/inventory/movements" + q).catch(() => []));
-  }
-  useEffect(() => { load(); }, [reason]);
+  const [items, setItems] = useState<any[]>([]);
+  useEffect(() => { api("/inventory/movements?limit=100").then(setItems).catch(() => []); }, []);
+
   return (
     <div className="panel">
-      <div className="panel-head">
-        <h3>Movement History</h3>
-        <select value={reason} onChange={(e) => setReason(e.target.value)} style={{ width: "auto" }}>
-          <option value="">All reasons</option>
-          <option value="PURCHASE">Purchase</option>
-          <option value="PRINT_USED">Print used</option>
-          <option value="FAILED_PRINT">Failed print</option>
-          <option value="DISPOSED">Disposed</option>
-          <option value="LOST">Lost</option>
-          <option value="MANUAL_ADJUST">Manual adjust</option>
-        </select>
-      </div>
-      {movements.length === 0 ? <div className="empty"><p>No movements yet.</p></div> : (
-        <table>
-          <thead><tr><th>Date</th><th>Spool</th><th>Reason</th><th>Grams</th><th>Cost</th><th>Note</th></tr></thead>
-          <tbody>
-            {movements.map((m) => (
-              <tr key={m.id}>
-                <td style={{ color: "var(--text-muted)", fontSize: "0.82rem" }}>{new Date(m.createdAt).toLocaleString()}</td>
-                <td>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                    <div style={{ width: 12, height: 12, borderRadius: 2, background: m.spool?.color?.hex || "#ccc" }} />
-                    <span style={{ fontSize: "0.85rem" }}>{m.spool?.brand?.name} {m.spool?.material?.name} {m.spool?.color?.name}</span>
-                  </div>
-                </td>
-                <td><span className="badge badge-muted">{m.reason}</span></td>
-                <td style={{ fontWeight: 700, color: m.deltaGrams < 0 ? "#ef4444" : "#16a34a" }}>{m.deltaGrams > 0 ? "+" : ""}{m.deltaGrams}g</td>
-                <td>{fmtMoney(m.costCents)}</td>
-                <td style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>{m.note || "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <div className="panel-head"><h3>Recent Movement History</h3></div>
+      <table>
+        <thead><tr><th>Date</th><th>Spool</th><th>Type</th><th>Delta</th><th>Note</th></tr></thead>
+        <tbody>
+          {items.map((m) => (
+            <tr key={m.id}>
+              <td style={{ whiteSpace: "nowrap", fontSize: "0.82rem" }}>{fmtDate(m.createdAt)}</td>
+              <td style={{ fontSize: "0.85rem" }}>
+                <div style={{ fontWeight: 600 }}>{m.spool.brand.name} {m.spool.material.name}</div>
+                <div style={{ color: "var(--text-muted)" }}>{m.spool.color.name} (Batch: {m.spool.batchCode || "—"})</div>
+              </td>
+              <td><span className={`badge ${m.reason === "PRINT_USAGE" ? "badge-primary" : "badge-muted"}`}>{m.reason}</span></td>
+              <td style={{ fontWeight: 700, color: m.deltaGrams < 0 ? "#ef4444" : "#10b981" }}>{m.deltaGrams > 0 ? "+" : ""}{m.deltaGrams}g</td>
+              <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{m.note || "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
