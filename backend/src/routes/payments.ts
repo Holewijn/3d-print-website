@@ -49,7 +49,6 @@ paymentsRouter.post("/webhook", async (req, res) => {
       await prisma.order.update({ where: { id: order.id }, data: { status: newStatus } });
 
       if (newStatus === "PAID") {
-        // Decrement product stock
         for (const item of order.items) {
           if (item.productId) {
             await prisma.product.update({
@@ -59,7 +58,6 @@ paymentsRouter.post("/webhook", async (req, res) => {
           }
         }
 
-        // If linked to a quote, mark it CONVERTED + create a print job
         if (order.quote && !order.quote.printJob) {
           await prisma.quote.update({
             where: { id: order.quote.id },
@@ -79,16 +77,20 @@ paymentsRouter.post("/webhook", async (req, res) => {
           }
         }
 
-        // Auto-create invoice + email
         try {
           const invoice = await createInvoiceForOrder(order.id);
+          // Mark the auto-generated invoice as paid (it was paid via this same Mollie payment)
+          await prisma.invoice.update({
+            where: { id: invoice.id },
+            data: { paidAt: new Date(), molliePaymentId: id },
+          });
           await sendInvoiceEmail(invoice).then(async () => {
             await prisma.invoice.update({
               where: { id: invoice.id },
               data: { emailSent: true, emailSentAt: new Date() },
             });
           }).catch((err) => {
-            console.error("[invoice] email failed (SMTP not configured?):", err.message);
+            console.error("[invoice] email failed:", err.message);
           });
         } catch (err: any) {
           console.error("[invoice] auto-create failed:", err.message);
@@ -99,6 +101,40 @@ paymentsRouter.post("/webhook", async (req, res) => {
     res.send("ok");
   } catch (e: any) {
     console.error("Webhook error", e);
+    res.status(500).send("error");
+  }
+});
+
+// ─── Invoice webhook (for manual payment links) ─────────
+// When admin generates a payment link for an existing invoice, this endpoint
+// receives Mollie's payment update and marks the invoice as paid.
+paymentsRouter.post("/invoice-webhook", async (req, res) => {
+  const id = req.body?.id;
+  if (!id) return res.status(400).send("missing id");
+  try {
+    const payment = await getMolliePayment(id);
+    const invoice = await prisma.invoice.findFirst({
+      where: { molliePaymentId: id },
+      include: { order: true },
+    });
+    if (!invoice) return res.status(404).send("no invoice");
+
+    if (payment.status === "paid" && !invoice.paidAt) {
+      await prisma.invoice.update({
+        where: { id: invoice.id },
+        data: { paidAt: new Date() },
+      });
+      // Also bump the order to PAID if it wasn't already
+      if (invoice.order && invoice.order.status === "PENDING") {
+        await prisma.order.update({
+          where: { id: invoice.order.id },
+          data: { status: "PAID" },
+        });
+      }
+    }
+    res.send("ok");
+  } catch (e: any) {
+    console.error("Invoice webhook error", e);
     res.status(500).send("error");
   }
 });

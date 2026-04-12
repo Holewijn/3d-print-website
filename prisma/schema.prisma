@@ -334,6 +334,9 @@ model PrintJob {
   movements       FilamentMovement[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
+  gcodeFilename    String?
+  gcodeOriginalName String?
+  gcodeSizeBytes   Int?
   @@index([status, createdAt])
 }
 
@@ -450,6 +453,8 @@ model Invoice {
   pdfPath         String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+  molliePaymentId  String?
+  paidAt           DateTime?
 
   @@index([year, sequence])
 }
