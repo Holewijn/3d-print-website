@@ -454,7 +454,6 @@ model Invoice {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   molliePaymentId  String?
-  paidAt           DateTime?
 
   @@index([year, sequence])
 }
