@@ -1,7 +1,12 @@
 import { Router } from "express";
 import { prisma } from "../db";
 import { requireAuth, requireAdmin } from "../middleware/auth";
-import { createInvoiceForOrder, generateInvoicePdf } from "../services/invoice";
+// Added generatePackingSlipPdf to the top-level import
+import { 
+  createInvoiceForOrder, 
+  generateInvoicePdf, 
+  generatePackingSlipPdf 
+} from "../services/invoice";
 import { sendInvoiceEmail } from "../services/email";
 import { createInvoicePaymentLink, emailInvoicePaymentLink } from "../services/invoicePayment";
 import { getMolliePayment } from "../services/mollie";
@@ -76,8 +81,10 @@ invoicesRouter.get("/order/:orderId/packing-slip", requireAuth, requireAdmin, as
       include: { items: true },
     });
     if (!order) return res.status(404).json({ error: "Not found" });
-    const { generatePackingSlipPdf } = await import("../services/invoice");
+    
+    // Removed the dynamic await import that was causing the TS2339 error
     const pdfPath = await generatePackingSlipPdf(order);
+    
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="packing-slip-${order.id.slice(-8)}.pdf"`);
     fs.createReadStream(pdfPath).pipe(res);
@@ -85,8 +92,6 @@ invoicesRouter.get("/order/:orderId/packing-slip", requireAuth, requireAdmin, as
     res.status(500).json({ error: e.message });
   }
 });
-
-// ─── Payment link endpoints ─────────────────────────────
 
 invoicesRouter.post("/:id/payment-link", requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -106,7 +111,6 @@ invoicesRouter.post("/:id/email-payment-link", requireAuth, requireAdmin, async 
   }
 });
 
-// Refresh the checkout URL from Mollie (used when admin reopens the modal)
 invoicesRouter.get("/:id/payment-status", requireAuth, requireAdmin, async (req, res) => {
   try {
     const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id } });
@@ -115,7 +119,6 @@ invoicesRouter.get("/:id/payment-status", requireAuth, requireAdmin, async (req,
 
     const p = await getMolliePayment(invoice.molliePaymentId);
 
-    // If Mollie says paid but our DB doesn't, update it
     if (p.status === "paid" && !invoice.paidAt) {
       await prisma.invoice.update({
         where: { id: invoice.id },
@@ -133,7 +136,6 @@ invoicesRouter.get("/:id/payment-status", requireAuth, requireAdmin, async (req,
   }
 });
 
-// ─── Delete invoice (admin only) ────────────────────────
 invoicesRouter.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     await prisma.invoice.delete({ where: { id: req.params.id } });
