@@ -41,6 +41,14 @@ export default function QuotesAdmin() {
       alert("Failed: " + e.message);
     }
   }
+   async function delQuote(id: string) {
+     if (!confirm("Permanently delete this quote?")) return;
+     try {
+       await api(`/quotes/${id}`, { method: "DELETE" });
+       if (viewing?.id === id) setViewing(null);
+       load();
+     } catch (e: any) { alert("Failed: " + e.message); }
+   }
 
   function downloadStl(uplId: string) {
     window.open(`/api/stl/${uplId}/download`, "_blank");
