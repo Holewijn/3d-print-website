@@ -15,8 +15,6 @@ async function findUserIdByEmail(email: string | undefined | null): Promise<stri
 }
 
 // ─── Public: list available material+color combos ─────
-// Returns every priced combo with current stock info. Frontend can show
-// out-of-stock combos with a badge but still let customer order.
 quotesRouter.get("/available-combos", async (_req, res) => {
   const combos = await prisma.materialColor.findMany({
     include: { material: true, color: true },
@@ -66,7 +64,6 @@ quotesRouter.post("/", async (req: AuthedRequest, res) => {
   const material = await prisma.material.findUnique({ where: { id: materialId } });
   if (!material) return res.status(400).json({ error: "Material not found" });
 
-  // Color is OPTIONAL — if customer doesn't pick one, they must describe it in the note
   let color = null;
   let mc = null;
   if (colorId) {
@@ -77,13 +74,11 @@ quotesRouter.post("/", async (req: AuthedRequest, res) => {
     });
     if (!mc) return res.status(400).json({ error: "This material+color combination is not currently offered" });
   } else {
-    // No color selected — require the customer to describe it in the note
     if (!customerNote || customerNote.trim().length < 3) {
       return res.status(400).json({
         error: "Please either pick a color or describe the desired color in the note field.",
       });
     }
-    // Use the average/fallback list price for the material when color is unset
     const avg = await prisma.materialColor.findFirst({
       where: { materialId: material.id },
       orderBy: { listPriceKgCents: "desc" },
@@ -142,8 +137,6 @@ quotesRouter.post("/", async (req: AuthedRequest, res) => {
 });
 
 // ─── Public: submit a quote for admin approval ─────────
-// Creates a ContactMessage in the inbox so admin gets a notification,
-// with the full quote details and an STL download link embedded.
 quotesRouter.post("/:id/submit-for-approval", async (req, res) => {
   try {
     const q = await prisma.quote.findUnique({
@@ -194,7 +187,6 @@ quotesRouter.post("/:id/submit-for-approval", async (req, res) => {
       },
     });
 
-    // Keep the quote in PRICED status — admin will manually move it forward
     res.json({ ok: true, quoteId: q.id });
   } catch (e: any) {
     console.error("submit-for-approval error", e);
@@ -208,7 +200,6 @@ quotesRouter.post("/:id/checkout", async (req: AuthedRequest, res) => {
   if (!q || !q.totalCents) return res.status(400).json({ error: "Quote not priced" });
   if (q.status === "CONVERTED") return res.status(400).json({ error: "Quote already converted" });
 
-  // Create the order linked to the quote + attach STL
   const order = await prisma.order.create({
     data: {
       userId: q.userId,
@@ -297,4 +288,32 @@ quotesRouter.post("/:id/send-to-queue", requireAuth, requireAdmin, async (req, r
     },
   });
   res.json(job);
+});
+
+// ─── Delete quote (admin only, refuses if linked) ──────
+quotesRouter.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const q = await prisma.quote.findUnique({
+      where: { id: req.params.id },
+      include: { printJob: true },
+    });
+    if (!q) return res.status(404).json({ error: "Not found" });
+
+    const linkedOrder = await prisma.order.findFirst({ where: { quoteId: q.id } });
+    if (linkedOrder) {
+      return res.status(400).json({
+        error: `Quote is linked to Order #${linkedOrder.id.slice(-8)}. Delete that order first.`,
+      });
+    }
+    if (q.printJob) {
+      return res.status(400).json({
+        error: `Quote has an active print job. Delete the print job first.`,
+      });
+    }
+
+    await prisma.quote.delete({ where: { id: q.id } });
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
 });
