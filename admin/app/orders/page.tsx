@@ -10,6 +10,7 @@ export default function OrdersAdmin() {
   const [filter, setFilter] = useState("ALL");
   const [viewing, setViewing] = useState<any>(null);
   const [busy, setBusy] = useState(false);
+  const [trackingModal, setTrackingModal] = useState<any>(null);
 
   async function load() {
     const list = await api("/orders").catch(() => []);
@@ -40,7 +41,6 @@ export default function OrdersAdmin() {
     setBusy(true);
     try {
       const order = await api(`/orders/${orderId}`);
-      // Find or create invoice
       let invoice;
       try {
         const all = await api("/invoices");
@@ -71,6 +71,15 @@ export default function OrdersAdmin() {
     window.open(`/api/invoices/order/${orderId}/packing-slip`, "_blank");
   }
 
+  async function delOrder(id: string) {
+    if (!confirm(`Permanently delete order #${id.slice(-8)}? Linked invoice and print job will remain.`)) return;
+    try {
+      await api(`/orders/${id}`, { method: "DELETE" });
+      if (viewing?.id === id) setViewing(null);
+      load();
+    } catch (e: any) { alert("Failed: " + e.message); }
+  }
+
   return (
     <Shell title="Orders" subtitle="Manage customer orders">
       <div className="panel">
@@ -95,7 +104,9 @@ export default function OrdersAdmin() {
                   <td><span className={`badge ${badge(o.status)}`}>{o.status}</span></td>
                   <td style={{ color: "var(--text-muted)" }}>{fmtDate(o.createdAt)}</td>
                   <td style={{ textAlign: "right" }}>
-                    <button className="btn btn-sm btn-outline" onClick={() => setViewing(o)}>View</button>
+                    <button className="btn btn-sm btn-outline" onClick={() => setViewing(o)}>View</button>{" "}
+                    <button className="btn btn-sm btn-outline" onClick={() => setTrackingModal(o)}>📦</button>{" "}
+                    <button className="btn btn-sm btn-danger" onClick={() => delOrder(o.id)}>×</button>
                   </td>
                 </tr>
               ))}
@@ -136,6 +147,18 @@ export default function OrdersAdmin() {
               </div>
             )}
 
+            {viewing.trackingNumber && (
+              <div style={{ marginBottom: "1.5rem", padding: "0.85rem 1rem", background: "var(--bg-elev-2)", borderRadius: 8 }}>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700, marginBottom: "0.4rem" }}>
+                  Tracking
+                </div>
+                <div style={{ fontSize: "0.9rem" }}>
+                  <strong>{viewing.trackingCarrier}</strong>: <code>{viewing.trackingNumber}</code>
+                  {viewing.shippedAt && <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>Shipped {fmtDate(viewing.shippedAt)}</div>}
+                </div>
+              </div>
+            )}
+
             <div style={{ marginBottom: "1.5rem" }}>
               <label>Status</label>
               <select value={viewing.status} onChange={(e) => setStatus(viewing.id, e.target.value)}>
@@ -168,7 +191,74 @@ export default function OrdersAdmin() {
           </div>
         </div>
       )}
+
+      {trackingModal && (
+        <TrackingModal
+          order={trackingModal}
+          onClose={() => setTrackingModal(null)}
+          onSaved={() => { setTrackingModal(null); load(); }}
+        />
+      )}
     </Shell>
+  );
+}
+
+function TrackingModal({ order, onClose, onSaved }: any) {
+  const [carrier, setCarrier] = useState(order.trackingCarrier || "PostNL");
+  const [trackingNumber, setTrackingNumber] = useState(order.trackingNumber || "");
+  const [sendEmail, setSendEmail] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function save() {
+    if (!trackingNumber.trim()) { setErr("Tracking number required"); return; }
+    setBusy(true); setErr("");
+    try {
+      await api(`/orders/${order.id}/tracking`, {
+        method: "POST",
+        body: JSON.stringify({ carrier, trackingNumber: trackingNumber.trim(), sendEmail }),
+      });
+      onSaved();
+    } catch (e: any) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+        <h3>Add Tracking — Order #{order.id.slice(-8)}</h3>
+        <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "1rem" }}>
+          Save a tracking number. Status will move to SHIPPED automatically.
+        </p>
+        <div className="form">
+          <div>
+            <label>Carrier</label>
+            <select value={carrier} onChange={(e) => setCarrier(e.target.value)}>
+              <option value="PostNL">PostNL</option>
+              <option value="DHL">DHL</option>
+              <option value="DPD">DPD</option>
+              <option value="UPS">UPS</option>
+              <option value="GLS">GLS</option>
+            </select>
+          </div>
+          <div>
+            <label>Tracking Number</label>
+            <input value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} placeholder="3SKABA123456789" autoFocus />
+          </div>
+          <div>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
+              <input type="checkbox" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} style={{ width: "auto", margin: 0 }} />
+              <span>Email customer with tracking link</span>
+            </label>
+          </div>
+          {err && <div className="error">{err}</div>}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+            <button className="btn btn-outline btn-sm" onClick={onClose}>Cancel</button>
+            <button className="btn" disabled={busy} onClick={save}>{busy ? "Saving…" : "Save Tracking"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
