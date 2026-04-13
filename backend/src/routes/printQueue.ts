@@ -143,7 +143,7 @@ printQueueRouter.post("/:id/send-to-printer", requireAuth, requireAdmin, async (
       where: { id: job.id },
       data: {
         printerId: printer.id,
-        status: startNow ? PrintJobStatus.PRINTING : PrintJobStatus.ASSIGNED,
+        status: startNow ? PrintJobStatus.PRINTING : PrintJobStatus.QUEUED,
         startedAt: startNow ? new Date() : job.startedAt,
       },
     });

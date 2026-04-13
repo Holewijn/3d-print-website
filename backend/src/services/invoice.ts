@@ -250,6 +250,17 @@ async function renderInvoicePdf(invoice: any, company: any, outPath: string) {
   });
 }
 
+export async function generateInvoicePdf(invoice: any): Promise<string> {
+  const company = await getCompanyInfo();
+  const pdfPath = path.join(INVOICE_DIR, `invoice-${invoice.number}.pdf`);
+  await renderInvoicePdf(invoice, company, pdfPath);
+  return pdfPath;
+}
+
+export async function generatePackingSlipPdf(order: any): Promise<string> {
+  return renderPackingSlip(order.id);
+}
+
 function formatDate(d: Date | string) {
   const date = new Date(d);
   return date.toLocaleDateString("nl-NL", { day: "2-digit", month: "long", year: "numeric" });
