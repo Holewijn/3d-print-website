@@ -1,0 +1,66 @@
+// Add these endpoints to your existing backend/src/routes/orders.ts
+// (paste at the bottom of the file, before the closing `export`).
+
+import { buildTrackingUrl, sendTrackingEmail } from "../services/tracking";
+
+// ─── Set tracking info ──────────────────────────────────
+// POST /api/orders/:id/tracking  body: { carrier, trackingNumber, sendEmail? }
+ordersRouter.post("/:id/tracking", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { carrier, trackingNumber, sendEmail } = req.body;
+    if (!carrier || !trackingNumber) return res.status(400).json({ error: "carrier and trackingNumber required" });
+
+    const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+    if (!order) return res.status(404).json({ error: "Not found" });
+
+    const postalCode = (order.shippingAddr as any)?.postalCode;
+    const trackingUrl = buildTrackingUrl(carrier, trackingNumber, postalCode);
+
+    const updated = await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        trackingCarrier: carrier,
+        trackingNumber,
+        shippedAt: new Date(),
+        status: "SHIPPED",
+      },
+    });
+
+    if (sendEmail && order.email) {
+      try {
+        await sendTrackingEmail(order, carrier, trackingNumber, trackingUrl);
+      } catch (e: any) {
+        console.error("[tracking] email failed:", e.message);
+      }
+    }
+
+    res.json({ order: updated, trackingUrl });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── Hard delete order ──────────────────────────────────
+ordersRouter.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    // OrderItems cascade via the relation; invoice + printjob stay (orphaned)
+    await prisma.orderItem.deleteMany({ where: { orderId: req.params.id } });
+    await prisma.order.delete({ where: { id: req.params.id } });
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// ─── Public order lookup (for /account/) ───────────────
+// GET /api/orders/mine — list orders for current logged-in user
+ordersRouter.get("/mine", requireAuth, async (req: AuthedRequest, res) => {
+  if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+  const orders = await prisma.order.findMany({
+    where: { OR: [{ userId: req.user.id }, { email: req.user.email }] },
+    include: { items: true },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
+  res.json(orders);
+});

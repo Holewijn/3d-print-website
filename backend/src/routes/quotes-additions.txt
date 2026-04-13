@@ -1,0 +1,30 @@
+// Add to your existing backend/src/routes/quotes.ts at the bottom.
+
+// ─── Delete quote (admin only, refuses if linked) ──────
+quotesRouter.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const q = await prisma.quote.findUnique({
+      where: { id: req.params.id },
+      include: { printJob: true },
+    });
+    if (!q) return res.status(404).json({ error: "Not found" });
+
+    // Check for linked order
+    const linkedOrder = await prisma.order.findFirst({ where: { quoteId: q.id } });
+    if (linkedOrder) {
+      return res.status(400).json({
+        error: `Quote is linked to Order #${linkedOrder.id.slice(-8)}. Delete that order first.`,
+      });
+    }
+    if (q.printJob) {
+      return res.status(400).json({
+        error: `Quote has an active print job. Delete the print job first.`,
+      });
+    }
+
+    await prisma.quote.delete({ where: { id: q.id } });
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+});

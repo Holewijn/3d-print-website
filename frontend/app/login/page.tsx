@@ -1,34 +1,55 @@
 "use client";
 import { useState } from "react";
-import { api } from "../../lib/api";
+import Link from "next/link";
 
-export default function Login() {
+export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    try { await api("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }); window.location.href = "/dashboard/"; }
-    catch (e: any) { setErr(e.message); }
+    setBusy(true); setErr("");
+    try {
+      const r = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, password }),
+      });
+      if (!r.ok) {
+        const data = await r.json();
+        throw new Error(data.error || "Login failed");
+      }
+      window.location.href = "/account/";
+    } catch (e: any) { setErr(e.message); }
+    finally { setBusy(false); }
   }
+
   return (
-    <>
-      <div className="page-header"><div className="container"><h1>Login</h1><p>Access your account, orders, and quotes.</p></div></div>
-      <section>
-        <div className="container" style={{ display: "grid", placeItems: "center" }}>
-          <div className="form-card">
-            <form onSubmit={submit}>
-              <div><label>Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} required /></div>
-              <div><label>Password</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} required /></div>
-              <button className="btn btn-lg">Login</button>
-              {err && <div className="error">{err}</div>}
-            </form>
-            <p style={{ marginTop: "1.5rem", textAlign: "center", color: "var(--text-muted)" }}>
-              No account? <a href="/register/" style={{ color: "var(--primary)", fontWeight: 600 }}>Register here</a>
+    <section style={{ padding: "5rem 0" }}>
+      <div className="container" style={{ maxWidth: 420 }}>
+        <h1 style={{ fontSize: "2rem", fontWeight: 800, marginBottom: "0.5rem" }}>Log in</h1>
+        <p style={{ color: "var(--text-muted)", marginBottom: "2rem" }}>Access your orders and quotes.</p>
+        <form className="form-card" onSubmit={submit}>
+          <div className="form">
+            <div>
+              <label>Email</label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+            </div>
+            <div>
+              <label>Password</label>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            </div>
+            {err && <div className="error">{err}</div>}
+            <button className="btn btn-lg" disabled={busy}>{busy ? "Logging in…" : "Log in"}</button>
+            <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", textAlign: "center", margin: 0 }}>
+              No account? <Link href="/register/" style={{ color: "var(--primary)" }}>Register</Link>
             </p>
           </div>
-        </div>
-      </section>
-    </>
+        </form>
+      </div>
+    </section>
   );
 }

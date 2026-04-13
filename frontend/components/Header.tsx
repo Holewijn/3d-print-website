@@ -1,14 +1,13 @@
 import Link from "next/link";
 import { getPublicSettings, DEFAULT_HEADER, MenuItem } from "../lib/publicSettings";
 import CartButton from "./CartButton";
+import AccountIcon from "./AccountIcon";
 
 export default async function Header() {
   const s = await getPublicSettings();
   const h = { ...DEFAULT_HEADER, ...(s["header"] || {}) };
   const menu: MenuItem[] = Array.isArray(h.menu) && h.menu.length ? h.menu : DEFAULT_HEADER.menu;
 
-  // New behavior: image + text are independent. If both are set, show side-by-side
-  // (image left, text right). If only one, show just that one.
   const hasImage = !!h.logoUrl;
   const hasText = !!h.logoText;
 
@@ -24,6 +23,7 @@ export default async function Header() {
           {menu.map((item, i) => (
             <Link key={i} href={item.href}>{item.label}</Link>
           ))}
+          <AccountIcon />
           {h.showCart !== false && <CartButton color={h.cartColor || ""} />}
           {h.ctaText && <Link href={h.ctaHref || "/quote/"} className="btn">{h.ctaText}</Link>}
         </nav>

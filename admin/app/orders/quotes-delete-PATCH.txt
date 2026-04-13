@@ -1,0 +1,20 @@
+// PATCH for admin/app/quotes/page.tsx — add delete button
+//
+// 1. In QuotesAdmin component, after the existing functions like sendToQueue,
+//    add:
+//
+//   async function delQuote(id: string) {
+//     if (!confirm("Permanently delete this quote?")) return;
+//     try {
+//       await api(`/quotes/${id}`, { method: "DELETE" });
+//       if (viewing?.id === id) setViewing(null);
+//       load();
+//     } catch (e: any) { alert("Failed: " + e.message); }
+//   }
+//
+// 2. In the table row actions, find:
+//   <button className="btn btn-sm btn-outline" onClick={() => setViewing(q)}>View</button>
+//
+// Replace with:
+//   <button className="btn btn-sm btn-outline" onClick={() => setViewing(q)}>View</button>{" "}
+//   <button className="btn btn-sm btn-danger" onClick={() => delQuote(q.id)}>×</button>
