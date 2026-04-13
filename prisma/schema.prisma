@@ -88,6 +88,9 @@ model Order {
   updatedAt       DateTime    @updatedAt
   stlUploadId  String?
   stlUpload    StlUpload?  @relation(fields: [stlUploadId], references: [id])
+  trackingCarrier  String?      // PostNL | DHL | DPD | UPS | GLS
+  trackingNumber   String?
+  shippedAt        DateTime?
 }
 
 enum OrderStatus {
