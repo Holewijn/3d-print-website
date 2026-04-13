@@ -89,7 +89,8 @@ export default function QuotesAdmin() {
                   <td><span className={`badge ${badge(q.status)}`}>{q.status}</span></td>
                   <td style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>{fmtDate(q.createdAt)}</td>
                   <td style={{ textAlign: "right" }}>
-                    <button className="btn btn-sm btn-outline" onClick={() => setViewing(q)}>View</button>
+                    <button className="btn btn-sm btn-outline" onClick={() => setViewing(q)}>View</button>{" "}
+                    <button className="btn btn-sm btn-danger" onClick={() => delQuote(q.id)}>×</button>
                   </td>
                 </tr>
               ))}
