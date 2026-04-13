@@ -2,6 +2,8 @@ import { Router } from "express";
 import multer from "multer";
 import { prisma } from "../db";
 import { requireAuth, requireAdmin } from "../middleware/auth";
+// 1. Import PrintJobStatus from Prisma Client
+import { PrintJobStatus } from "@prisma/client";
 import {
   isAllowedGcode,
   storeGcode,
@@ -43,7 +45,6 @@ printQueueRouter.put("/:id", requireAuth, requireAdmin, async (req, res) => {
 
 // ─── Delete ───
 printQueueRouter.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
-  // Clean up any attached gcode file from disk first
   const job = await prisma.printJob.findUnique({ where: { id: req.params.id } });
   if (job?.gcodeFilename) deleteGcode(job.gcodeFilename);
   await prisma.printJob.delete({ where: { id: req.params.id } });
@@ -57,7 +58,6 @@ printQueueRouter.post("/:id/upload-gcode", requireAuth, requireAdmin, upload.sin
     const job = await prisma.printJob.findUnique({ where: { id: req.params.id } });
     if (!job) return res.status(404).json({ error: "Print job not found" });
 
-    // Replace any existing gcode
     if (job.gcodeFilename) deleteGcode(job.gcodeFilename);
 
     const stored = storeGcode(req.file.buffer, req.file.originalname);
@@ -110,7 +110,6 @@ printQueueRouter.delete("/:id/gcode", requireAuth, requireAdmin, async (req, res
 });
 
 // ─── Send to printer ───
-// Body: { printerId: string, startNow?: boolean }
 printQueueRouter.post("/:id/send-to-printer", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { printerId, startNow } = req.body;
@@ -126,14 +125,12 @@ printQueueRouter.post("/:id/send-to-printer", requireAuth, requireAdmin, async (
     if (!printer) return res.status(404).json({ error: "Printer not found" });
     if (!printer.active) return res.status(400).json({ error: "Printer is disabled" });
 
-    // Upload to Moonraker
     const remoteName = await uploadToMoonraker(
       { moonrakerUrl: printer.moonrakerUrl, apiKey: printer.apiKey },
       job.gcodeFilename,
       job.gcodeOriginalName,
     );
 
-    // Optionally start the print right away
     if (startNow) {
       await startMoonrakerPrint(
         { moonrakerUrl: printer.moonrakerUrl, apiKey: printer.apiKey },
@@ -141,12 +138,12 @@ printQueueRouter.post("/:id/send-to-printer", requireAuth, requireAdmin, async (
       );
     }
 
-    // Update job status + assigned printer
+    // 2. Use the Enum values here instead of raw strings
     const updated = await prisma.printJob.update({
       where: { id: job.id },
       data: {
         printerId: printer.id,
-        status: startNow ? "PRINTING" : "ASSIGNED",
+        status: startNow ? PrintJobStatus.PRINTING : PrintJobStatus.ASSIGNED,
         startedAt: startNow ? new Date() : job.startedAt,
       },
     });
