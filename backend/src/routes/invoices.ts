@@ -143,15 +143,4 @@ invoicesRouter.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
   } catch (e: any) {
     res.status(400).json({ error: e.message });
   }
-
-export async function generateInvoicePdf(invoice: any): Promise<string> {
-  const company = await getCompanyInfo();
-  const pdfPath = path.join(INVOICE_DIR, `invoice-${invoice.number}.pdf`);
-  await renderInvoicePdf(invoice, company, pdfPath);
-  return pdfPath;
-}
-
-export async function generatePackingSlipPdf(order: any): Promise<string> {
-  return renderPackingSlip(order.id);
-}
 });
