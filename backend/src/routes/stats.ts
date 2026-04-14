@@ -76,9 +76,11 @@ statsRouter.get("/dashboard", requireAuth, requireAdmin, async (req, res) => {
 
     // ─── Metric 4: Customer growth (FIXED ROLE) ───
     const newCustomers = await prisma.user.count({
-      where: { createdAt: { gte: since }, role: Role.USER },
+      where: { createdAt: { gte: since }, role: Role.CUSTOMER },
     });
-    const totalCustomers = await prisma.user.count({ where: { role: Role.USER } });
+    const totalCustomers = await prisma.user.count({ 
+    where: { role: Role.CUSTOMER } 
+    });
 
     // ... (Revenue over time logic remains the same) ...
     const revByDay = new Map<string, number>();
