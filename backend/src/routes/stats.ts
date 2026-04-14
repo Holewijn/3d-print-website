@@ -29,6 +29,33 @@ const PAID_STATUSES: OrderStatus[] = [
   OrderStatus.COMPLETED
 ];
 
+// ─── Summary — used by /admin/stats and /admin/dashboard ──────
+statsRouter.get("/summary", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const monthAgo = new Date();
+    monthAgo.setDate(monthAgo.getDate() - 30);
+
+    const [total, last30d, orders, quotes, topPaths] = await Promise.all([
+      prisma.pageView.count(),
+      prisma.pageView.count({ where: { createdAt: { gte: monthAgo } } }),
+      prisma.order.count(),
+      prisma.quote.count(),
+      prisma.pageView.groupBy({
+        by: ["path"],
+        where: { createdAt: { gte: monthAgo } },
+        _count: { path: true },
+        orderBy: { _count: { path: "desc" } },
+        take: 10,
+      }),
+    ]);
+
+    res.json({ total, last30d, orders, quotes, topPaths });
+  } catch (e: any) {
+    console.error("stats summary error", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── Main dashboard data — single call ────────────────
 statsRouter.get("/dashboard", requireAuth, requireAdmin, async (req, res) => {
   try {
