@@ -64,3 +64,20 @@ authRouter.get("/me", requireAuth, async (req: AuthedRequest, res) => {
   const { passwordHash, ...safe } = user as any;
   res.json(safe);
 });
+
+authRouter.put("/profile", requireAuth, async (req: AuthedRequest, res) => {
+  const schema = z.object({
+    firstName:   z.string().optional(),
+    lastName:    z.string().optional(),
+    phone:       z.string().optional(),
+    addressLine1: z.string().optional(),
+    addressLine2: z.string().optional(),
+    city:        z.string().optional(),
+    postalCode:  z.string().optional(),
+    country:     z.string().optional(),
+  });
+  const data = schema.parse(req.body);
+  const user = await prisma.user.update({ where: { id: req.user!.id }, data });
+  const { passwordHash, ...safe } = user as any;
+  res.json(safe);
+});
