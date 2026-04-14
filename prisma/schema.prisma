@@ -63,6 +63,7 @@ model Product {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   orderItems  OrderItem[]
+  trackStock  Boolean  @default(true)
 }
 
 model Order {
