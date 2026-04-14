@@ -148,6 +148,7 @@ export default function AccountPage() {
   const [user, setUser] = useState<any>(null);
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<"orders" | "details">("orders");
 
   // Personal details form
   const [form, setForm] = useState({
@@ -180,7 +181,7 @@ export default function AccountPage() {
     window.location.href = "/";
   }
 
-  async function saveProfile(e: React.FormEvent) {
+  async function saveProfile(e: { preventDefault(): void }) {
     e.preventDefault();
     setSaving(true); setSaved(false); setSaveErr("");
     try {
@@ -218,81 +219,104 @@ export default function AccountPage() {
           <button className="btn btn-outline" onClick={logout}>Log out</button>
         </div>
 
-        {/* Orders */}
-        <div className="form-card" style={{ marginBottom: "2rem" }}>
-          <h3 style={{ marginTop: 0, marginBottom: "1.1rem" }}>My Orders ({orders.length})</h3>
-          {orders.length === 0 ? (
-            <p style={{ color: "var(--text-muted)" }}>
-              No orders yet.{" "}
-              <Link href="/webshop/" style={{ color: "var(--primary)" }}>Browse the shop</Link>
-            </p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
-              {orders.map((o) => <OrderRow key={o.id} order={o} />)}
-            </div>
-          )}
+        {/* Tabs */}
+        <div style={{ display: "flex", gap: 0, borderBottom: "2px solid var(--border, #e5e7eb)", marginBottom: "1.5rem" }}>
+          {(["orders", "details"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                padding: "0.65rem 1.25rem",
+                fontSize: "0.95rem", fontWeight: 600,
+                color: tab === t ? "var(--primary, #2563eb)" : "var(--text-muted, #6b7280)",
+                borderBottom: `2px solid ${tab === t ? "var(--primary, #2563eb)" : "transparent"}`,
+                marginBottom: "-2px",
+                transition: "color 0.15s",
+              }}
+            >
+              {t === "orders" ? `Orders (${orders.length})` : "Personal Details"}
+            </button>
+          ))}
         </div>
 
-        {/* Personal details */}
-        <div className="form-card">
-          <h3 style={{ marginTop: 0, marginBottom: "1.1rem" }}>Personal Details</h3>
-          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: 0, marginBottom: "1.25rem" }}>
-            Saved details are pre-filled automatically at checkout.
-          </p>
-          <form onSubmit={saveProfile} className="form">
-            <div className="form-row">
-              <div>
-                <label>First name</label>
-                <input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
-              </div>
-              <div>
-                <label>Last name</label>
-                <input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
-              </div>
-            </div>
-            <div>
-              <label>Phone</label>
-              <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-            </div>
-            <div>
-              <label>Address</label>
-              <input value={form.addressLine1} onChange={(e) => setForm({ ...form, addressLine1: e.target.value })} placeholder="Street and number" />
-            </div>
-            <div>
-              <label>Apartment / suite (optional)</label>
-              <input value={form.addressLine2} onChange={(e) => setForm({ ...form, addressLine2: e.target.value })} />
-            </div>
-            <div className="form-row">
-              <div>
-                <label>City</label>
-                <input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
-              </div>
-              <div>
-                <label>Postal code</label>
-                <input value={form.postalCode} onChange={(e) => setForm({ ...form, postalCode: e.target.value })} />
-              </div>
-            </div>
-            <div>
-              <label>Country</label>
-              <select value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })}>
-                {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
-              </select>
-            </div>
-
-            {saveErr && (
-              <div style={{ background: "#fef2f2", color: "#dc2626", padding: "0.65rem 0.9rem", borderRadius: 8, fontSize: "0.88rem" }}>
-                {saveErr}
+        {/* Orders tab */}
+        {tab === "orders" && (
+          <div className="form-card">
+            {orders.length === 0 ? (
+              <p style={{ color: "var(--text-muted)", margin: 0 }}>
+                No orders yet.{" "}
+                <Link href="/webshop/" style={{ color: "var(--primary)" }}>Browse the shop</Link>
+              </p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+                {orders.map((o) => <OrderRow key={o.id} order={o} />)}
               </div>
             )}
+          </div>
+        )}
 
-            <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-              <button type="submit" className="btn" disabled={saving}>
-                {saving ? "Saving…" : "Save details"}
-              </button>
-              {saved && <span style={{ fontSize: "0.88rem", color: "#16a34a", fontWeight: 600 }}>Saved!</span>}
-            </div>
-          </form>
-        </div>
+        {/* Personal details tab */}
+        {tab === "details" && (
+          <div className="form-card">
+            <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: 0, marginBottom: "1.25rem" }}>
+              Saved details are pre-filled automatically at checkout.
+            </p>
+            <form onSubmit={saveProfile} className="form">
+              <div className="form-row">
+                <div>
+                  <label>First name</label>
+                  <input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
+                </div>
+                <div>
+                  <label>Last name</label>
+                  <input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
+                </div>
+              </div>
+              <div>
+                <label>Phone</label>
+                <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+              </div>
+              <div>
+                <label>Address</label>
+                <input value={form.addressLine1} onChange={(e) => setForm({ ...form, addressLine1: e.target.value })} placeholder="Street and number" />
+              </div>
+              <div>
+                <label>Apartment / suite (optional)</label>
+                <input value={form.addressLine2} onChange={(e) => setForm({ ...form, addressLine2: e.target.value })} />
+              </div>
+              <div className="form-row">
+                <div>
+                  <label>City</label>
+                  <input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
+                </div>
+                <div>
+                  <label>Postal code</label>
+                  <input value={form.postalCode} onChange={(e) => setForm({ ...form, postalCode: e.target.value })} />
+                </div>
+              </div>
+              <div>
+                <label>Country</label>
+                <select value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })}>
+                  {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+                </select>
+              </div>
+
+              {saveErr && (
+                <div style={{ background: "#fef2f2", color: "#dc2626", padding: "0.65rem 0.9rem", borderRadius: 8, fontSize: "0.88rem" }}>
+                  {saveErr}
+                </div>
+              )}
+
+              <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                <button type="submit" className="btn" disabled={saving}>
+                  {saving ? "Saving…" : "Save details"}
+                </button>
+                {saved && <span style={{ fontSize: "0.88rem", color: "#16a34a", fontWeight: 600 }}>Saved!</span>}
+              </div>
+            </form>
+          </div>
+        )}
       </div>
     </section>
   );
