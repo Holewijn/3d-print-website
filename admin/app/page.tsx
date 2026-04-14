@@ -8,8 +8,8 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import GridLayout, { Layout } from "react-grid-layout";
-import "react-grid-layout/css/styles.css";
-import "react-resizable/css/styles.css";
+import GridLayout from "react-grid-layout";
+import type { Layout } from "react-grid-layout";
 
 const RANGES = [
   { id: "today",  label: "Today" },
