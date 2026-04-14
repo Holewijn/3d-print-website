@@ -5,15 +5,16 @@ import { api } from "../../lib/api";
 import ImagePicker from "../../components/ImagePicker";
 
 const TABS = [
-  { id: "header",  label: "Site Header" },
-  { id: "footer",  label: "Site Footer" },
-  { id: "admin",   label: "Admin Branding" },
+  { id: "header", label: "Site Header" },
+  { id: "footer", label: "Site Footer" },
+  { id: "admin", label: "Admin Branding" },
 ];
 
 const DEFAULT_HEADER = {
   logoText: "3D Print Studio",
   logoMark: "▲",
   logoUrl: "",
+  logoHeight: 40,
   menu: [
     { label: "Home", href: "/" },
     { label: "Services", href: "/services/" },
@@ -110,13 +111,28 @@ export default function AppearancePage() {
               label="Logo Image"
               value={header.logoUrl || ""}
               onChange={(v) => setHeader({ ...header, logoUrl: v })}
-              help="Upload a PNG/SVG (rendered at 40px height). Leave empty to skip the image."
+              help="Upload a PNG/SVG. Leave empty to skip the image."
             />
 
             <div>
               <label>Logo Text</label>
               <input value={header.logoText || ""} onChange={(e) => setHeader({ ...header, logoText: e.target.value })} placeholder="3D Print Studio" />
               <div className="help">The brand name shown next to the image. Leave empty to skip the text.</div>
+            </div>
+
+            <div>
+              <label>Logo Height (px)</label>
+              <input
+                type="number"
+                min={20}
+                max={120}
+                value={header.logoHeight || 40}
+                onChange={(e) => setHeader({ ...header, logoHeight: +e.target.value })}
+              />
+              <div className="help">
+                Height of the logo image in pixels. Default is 40. Most logos look
+                good between 32 and 80. The image width scales automatically.
+              </div>
             </div>
 
             <div>
