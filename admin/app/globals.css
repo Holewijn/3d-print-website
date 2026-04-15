@@ -470,3 +470,135 @@ textarea { resize: vertical; min-height: 100px; }
   .topbar { padding: 0 1rem; }
 }
 
+/* ─── Sidebar collapsed state ─── */
+body.sidebar-collapsed .app { grid-template-columns: 64px 1fr; }
+body.sidebar-collapsed .sidebar { width: 64px; overflow: hidden; }
+body.sidebar-collapsed .sidebar-brand-text,
+body.sidebar-collapsed .sidebar-nav span:last-child,
+body.sidebar-collapsed .sidebar-section,
+body.sidebar-collapsed .sidebar-search,
+body.sidebar-collapsed .sidebar-footer-text { display: none !important; }
+body.sidebar-collapsed .sidebar-nav a { justify-content: center; padding: 0.55rem 0; }
+body.sidebar-collapsed .sidebar-nav .icon { margin: 0; font-size: 1.15rem; }
+body.sidebar-collapsed .sidebar-footer { justify-content: center; padding: 0.75rem 0; }
+body.sidebar-collapsed .topbar { left: 64px; }
+
+/* ─── Skeleton shimmer ─── */
+@keyframes shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position:  600px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-elev) 25%, var(--bg-elev-2) 50%, var(--bg-elev) 75%);
+  background-size: 1200px 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 6px;
+  display: block;
+}
+
+/* ─── Button spinner ─── */
+@keyframes btn-spin { to { transform: rotate(360deg); } }
+.btn-spinner {
+  display: inline-block;
+  width: 13px; height: 13px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: btn-spin 0.65s linear infinite;
+  flex-shrink: 0;
+}
+
+/* ─── Toast animation ─── */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ─── Sortable table headers ─── */
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+th.sortable:hover { color: var(--text); }
+th.sortable .sort-icon { margin-left: 0.3rem; opacity: 0.4; font-size: 0.7rem; }
+th.sortable.sort-asc .sort-icon,
+th.sortable.sort-desc .sort-icon { opacity: 1; color: var(--primary); }
+
+/* ─── Pagination ─── */
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  justify-content: flex-end;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.pagination button {
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: background 0.15s;
+}
+.pagination button:hover:not(:disabled) { background: var(--bg-elev); }
+.pagination button:disabled { opacity: 0.4; cursor: default; }
+.pagination button.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+
+/* ─── Bulk action bar ─── */
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  background: var(--primary-soft);
+  border-bottom: 1px solid var(--primary);
+  font-size: 0.85rem;
+  animation: toast-in 0.15s ease;
+}
+
+/* ─── Clickable table rows ─── */
+tr.clickable-row { cursor: pointer; }
+tr.clickable-row:hover td { background: var(--bg-elev-2); }
+
+/* ─── Unsaved changes banner ─── */
+.unsaved-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 1.1rem;
+  background: var(--warning-soft);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+  animation: toast-in 0.2s ease;
+}
+
+/* ─── Table filter bar ─── */
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.table-toolbar input[type="search"],
+.table-toolbar input[type="text"] {
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+  width: 220px;
+}
+.table-toolbar input:focus { outline: none; border-color: var(--primary); }
+

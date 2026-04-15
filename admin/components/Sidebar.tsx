@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 
 const NAV = [
@@ -9,52 +9,86 @@ const NAV = [
   {
     section: "Content",
     items: [
-      { href: "/pages/", label: "Pages", icon: "▭" },
+      { href: "/pages/",    label: "Pages",    icon: "▭" },
       { href: "/products/", label: "Products", icon: "▣" },
-      { href: "/quotes/", label: "Quotes", icon: "✎" },
-      { href: "/orders/", label: "Orders", icon: "▦" },
+      { href: "/quotes/",   label: "Quotes",   icon: "✎" },
+      { href: "/orders/",   label: "Orders",   icon: "▦" },
       { href: "/invoices/", label: "Invoices", icon: "📄" },
     ],
   },
   {
     section: "Production",
     items: [
-      { href: "/printers/", label: "Printers", icon: "▲" },
+      { href: "/printers/",        label: "Printers",        icon: "▲" },
       { href: "/printer-control/", label: "Printer Control", icon: "◈" },
-      { href: "/print-queue/", label: "Print Queue", icon: "⇉" },
-      { href: "/inventory/", label: "Inventory", icon: "◉" },
+      { href: "/print-queue/",     label: "Print Queue",     icon: "⇉" },
+      { href: "/inventory/",       label: "Inventory",       icon: "◉" },
     ],
   },
   {
     section: "Operations",
     items: [
-      { href: "/shipping/", label: "Shipping", icon: "✈" },
-      { href: "/contact/", label: "Messages", icon: "✉" },
-      { href: "/contact-form/", label: "Contact Form", icon: "▤" },
+      { href: "/shipping/",     label: "Shipping",      icon: "✈" },
+      { href: "/contact/",      label: "Messages",      icon: "✉" },
+      { href: "/contact-form/", label: "Contact Form",  icon: "▤" },
     ],
   },
   {
     section: "Configuration",
     items: [
-      { href: "/appearance/", label: "Appearance", icon: "✦" },
-      { href: "/media/", label: "Media Library", icon: "▣" },
-      { href: "/stats/", label: "Statistics", icon: "≡" },
-      { href: "/settings/", label: "Settings", icon: "⚙" },
-      { href: "/update/", label: "System Update", icon: "↻" },
+      { href: "/appearance/", label: "Appearance",   icon: "✦" },
+      { href: "/media/",      label: "Media Library", icon: "▣" },
+      { href: "/stats/",      label: "Statistics",    icon: "≡" },
+      { href: "/settings/",   label: "Settings",      icon: "⚙" },
+      { href: "/update/",     label: "System Update", icon: "↻" },
     ],
   },
 ];
 
+const STORAGE_KEY = "p3d_sidebar_collapsed";
+
 export default function Sidebar() {
-  const pathname = usePathname() || "/";
-  const isActive = (href: string) =>
+  const pathname  = usePathname() || "/";
+  const searchRef = useRef<HTMLInputElement>(null);
+  const isActive  = (href: string) =>
     href === "/" ? pathname === "/" || pathname === "" : pathname.startsWith(href);
 
-  const [brand, setBrand] = useState<any>({
+  const [collapsed, setCollapsed] = useState(false);
+  const [query, setQuery]         = useState("");
+  const [brand, setBrand]         = useState<any>({
     brandName: "Print Studio", tagline: "Admin v1.0",
     logoMark: "3D", logoUrl: "", primaryColor: "#3b82f6",
   });
 
+  // Restore collapsed state from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY) === "1";
+    setCollapsed(saved);
+    document.body.classList.toggle("sidebar-collapsed", saved);
+  }, []);
+
+  // Sync body class whenever collapsed changes
+  useEffect(() => {
+    document.body.classList.toggle("sidebar-collapsed", collapsed);
+    localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
+  }, [collapsed]);
+
+  // Keyboard shortcut: [ to toggle, / to focus search
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "[") setCollapsed((v) => !v);
+      if (e.key === "/" && !collapsed) {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [collapsed]);
+
+  // Load brand settings
   useEffect(() => {
     api("/settings/public").then((s) => {
       if (s["admin"]) {
@@ -69,24 +103,50 @@ export default function Sidebar() {
     }).catch(() => {});
   }, []);
 
+  // Filter nav items
+  const q = query.trim().toLowerCase();
+  const filtered = NAV.map((group) => ({
+    ...group,
+    items: q ? group.items.filter((it) => it.label.toLowerCase().includes(q)) : group.items,
+  })).filter((group) => group.items.length > 0);
+
   return (
     <aside className="sidebar">
+      {/* Brand */}
       <div className="sidebar-brand">
         {brand.logoUrl
           ? <img src={brand.logoUrl} alt={brand.brandName} style={{ height: 36, width: "auto" }} />
           : <div className="mark">{brand.logoMark}</div>}
-        <div>
+        <div className="sidebar-brand-text">
           <div className="name">{brand.brandName}</div>
           <div className="ver">{brand.tagline}</div>
         </div>
       </div>
-      <div className="sidebar-search"><input placeholder="Search menu…" /></div>
-      {NAV.map((group, gi) => (
+
+      {/* Search */}
+      <div className="sidebar-search">
+        <input
+          ref={searchRef}
+          placeholder="Search…  /"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Escape" && setQuery("")}
+        />
+      </div>
+
+      {/* Nav groups */}
+      {filtered.map((group, gi) => (
         <div key={gi}>
           {group.section && <div className="sidebar-section">{group.section}</div>}
           <nav className="sidebar-nav">
             {group.items.map((it) => (
-              <Link key={it.href} href={it.href} className={isActive(it.href) ? "active" : ""}>
+              <Link
+                key={it.href}
+                href={it.href}
+                className={isActive(it.href) ? "active" : ""}
+                title={collapsed ? it.label : undefined}
+                onClick={() => setQuery("")}
+              >
                 <span className="icon">{it.icon}</span>
                 <span>{it.label}</span>
               </Link>
@@ -94,7 +154,25 @@ export default function Sidebar() {
           </nav>
         </div>
       ))}
-      <div className="sidebar-footer">← Collapse Menu</div>
+
+      {q && filtered.length === 0 && (
+        <div style={{ padding: "1rem", color: "var(--text-dim)", fontSize: "0.82rem", textAlign: "center" }}>
+          No results for "{query}"
+        </div>
+      )}
+
+      {/* Footer: collapse toggle */}
+      <div
+        className="sidebar-footer"
+        onClick={() => setCollapsed((v) => !v)}
+        style={{ cursor: "pointer" }}
+        title={collapsed ? "Expand sidebar  [" : "Collapse sidebar  ["}
+      >
+        <span style={{ fontSize: "1rem" }}>{collapsed ? "→" : "←"}</span>
+        <span className="sidebar-footer-text" style={{ fontSize: "0.8rem" }}>
+          {collapsed ? "" : "Collapse  ["}
+        </span>
+      </div>
     </aside>
   );
 }

@@ -4,6 +4,9 @@ import Shell from "../../components/Shell";
 import { api, fmtMoney, fmtDate } from "../../lib/api";
 import ImagePicker from "../../components/ImagePicker";
 import InventoryIOButtons from "../../components/InventoryIOButtons";
+import { useToast } from "../../components/Toast";
+import { useConfirm } from "../../components/ConfirmModal";
+import { TableSkeleton } from "../../components/Skeleton";
 
 const TABS = [
   { id: "dashboard",  label: "Dashboard" },
@@ -126,16 +129,20 @@ function DashboardTab() {
 
 // ─── Spools ───────────────────────────────────────────
 function SpoolsTab() {
+  const { success, error } = useToast();
+  const confirm = useConfirm();
   const [spools, setSpools] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);
   const [materials, setMaterials] = useState<any[]>([]);
   const [colors, setColors] = useState<any[]>([]);
   const [printers, setPrinters] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
   const [editing, setEditing] = useState<any>(null);
   const [adjusting, setAdjusting] = useState<any>(null);
 
   async function load() {
+    setLoading(true);
     const q = statusFilter ? `?status=${statusFilter}` : "";
     setSpools(await api("/inventory/spools" + q).catch(() => []));
     if (brands.length === 0) {
@@ -144,31 +151,56 @@ function SpoolsTab() {
       setColors(await api("/inventory/colors").catch(() => []));
       setPrinters(await api("/printers").catch(() => []));
     }
+    setLoading(false);
   }
   useEffect(() => { load(); }, [statusFilter]);
 
   async function dispose(id: string) {
-    if (!confirm("Dispose this spool? Remaining grams will be written off.")) return;
-    await api(`/inventory/spools/${id}/dispose`, { method: "POST", body: JSON.stringify({}) });
-    load();
+    const ok = await confirm({ title: "Dispose this spool?", message: "Remaining grams will be written off.", variant: "danger" });
+    if (!ok) return;
+    try {
+      await api(`/inventory/spools/${id}/dispose`, { method: "POST", body: JSON.stringify({}) });
+      success("Spool disposed");
+      load();
+    } catch (e: any) {
+      error("Failed: " + e.message);
+    }
   }
 
   async function hardDelete(s: any) {
-    const msg = `PERMANENTLY DELETE this spool?\n\n${s.brand?.name} ${s.material?.name} ${s.color?.name}\nBatch: ${s.batchCode || "—"}\n\nThis removes the spool AND its entire movement history. It cannot be undone.\n\nType DELETE to confirm.`;
-    const answer = prompt(msg);
-    if (answer !== "DELETE") return;
-    await api(`/inventory/spools/${s.id}?confirm=1`, { method: "DELETE" });
-    load();
+    const ok = await confirm({
+      title: `Permanently delete this spool?`,
+      message: `${s.brand?.name} ${s.material?.name} ${s.color?.name} — Batch: ${s.batchCode || "—"}\n\nThis removes the spool AND its entire movement history. It cannot be undone.`,
+      confirmLabel: "Delete permanently",
+      variant: "danger",
+    });
+    if (!ok) return;
+    try {
+      await api(`/inventory/spools/${s.id}?confirm=1`, { method: "DELETE" });
+      success("Spool deleted");
+      load();
+    } catch (e: any) {
+      error("Failed: " + e.message);
+    }
   }
 
   async function loadOnPrinter(spoolId: string, printerId: string) {
     if (!printerId) return;
-    await api(`/inventory/spools/${spoolId}/load`, { method: "POST", body: JSON.stringify({ printerId }) });
-    load();
+    try {
+      await api(`/inventory/spools/${spoolId}/load`, { method: "POST", body: JSON.stringify({ printerId }) });
+      load();
+    } catch (e: any) {
+      error("Failed to load spool: " + e.message);
+    }
   }
+
   async function unload(spoolId: string) {
-    await api(`/inventory/spools/${spoolId}/unload`, { method: "POST", body: JSON.stringify({}) });
-    load();
+    try {
+      await api(`/inventory/spools/${spoolId}/unload`, { method: "POST", body: JSON.stringify({}) });
+      load();
+    } catch (e: any) {
+      error("Failed to unload spool: " + e.message);
+    }
   }
 
   return (
@@ -188,7 +220,15 @@ function SpoolsTab() {
           </button>
         </div>
       </div>
-      {spools.length === 0 ? (
+
+      {loading ? (
+        <table>
+          <thead>
+            <tr><th>Brand / Material / Color</th><th>Remaining</th><th>Cost/kg</th><th>Purchased</th><th>Status</th><th>Printer</th><th></th></tr>
+          </thead>
+          <tbody><TableSkeleton rows={6} cols={7} /></tbody>
+        </table>
+      ) : spools.length === 0 ? (
         <div className="empty"><div className="icon">◉</div><p>No spools yet. Add your first spool to start tracking.</p></div>
       ) : (
         <table>
@@ -243,7 +283,9 @@ function SpoolsTab() {
                   <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                     <button className="btn btn-sm btn-outline" onClick={() => setAdjusting(s)}>Adjust</button>{" "}
                     <button className="btn btn-sm btn-outline" onClick={() => setEditing(s)}>Edit</button>{" "}
-                    {s.status !== "DISPOSED" && <button className="btn btn-sm btn-outline" onClick={() => dispose(s.id)} title="Write off remaining grams, mark disposed">Dispose</button>}{" "}
+                    {s.status !== "DISPOSED" && (
+                      <button className="btn btn-sm btn-outline" onClick={() => dispose(s.id)} title="Write off remaining grams, mark disposed">Dispose</button>
+                    )}{" "}
                     <button className="btn btn-sm btn-danger" onClick={() => hardDelete(s)} title="Permanently delete spool + history">Delete</button>
                   </td>
                 </tr>
@@ -253,21 +295,36 @@ function SpoolsTab() {
         </table>
       )}
 
-      {editing && <SpoolEditor spool={editing} brands={brands} materials={materials} colors={colors} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
-      {adjusting && <AdjustModal spool={adjusting} onClose={() => setAdjusting(null)} onSaved={() => { setAdjusting(null); load(); }} />}
+      {editing && (
+        <SpoolEditor
+          spool={editing}
+          brands={brands}
+          materials={materials}
+          colors={colors}
+          onClose={() => setEditing(null)}
+          onSaved={(msg: string) => { setEditing(null); load(); success(msg); }}
+        />
+      )}
+      {adjusting && (
+        <AdjustModal
+          spool={adjusting}
+          onClose={() => setAdjusting(null)}
+          onSaved={() => { setAdjusting(null); load(); success("Stock adjusted"); }}
+        />
+      )}
     </div>
   );
 }
 
 function SpoolEditor({ spool, brands, materials, colors, onClose, onSaved }: any) {
+  const { error } = useToast();
   const [f, setF] = useState<any>({ ...spool });
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
   const [mergeCandidate, setMergeCandidate] = useState<any>(null);
   const isNew = spool._isNew;
 
   async function save() {
-    setBusy(true); setErr("");
+    setBusy(true);
     try {
       if (isNew && f.batchCode) {
         const match = await api("/inventory/spools/find-mergeable", {
@@ -286,11 +343,14 @@ function SpoolEditor({ spool, brands, materials, colors, onClose, onSaved }: any
         }
       }
       await actuallySave();
-    } catch (e: any) { setErr(e.message); setBusy(false); }
+    } catch (e: any) {
+      error(e.message);
+      setBusy(false);
+    }
   }
 
   async function actuallySave() {
-    setBusy(true); setErr("");
+    setBusy(true);
     try {
       const body = {
         brandId: f.brandId,
@@ -307,13 +367,16 @@ function SpoolEditor({ spool, brands, materials, colors, onClose, onSaved }: any
       };
       if (isNew) await api("/inventory/spools", { method: "POST", body: JSON.stringify(body) });
       else await api(`/inventory/spools/${spool.id}`, { method: "PUT", body: JSON.stringify(body) });
-      onSaved();
-    } catch (e: any) { setErr(e.message); }
-    finally { setBusy(false); }
+      onSaved(isNew ? "Spool added" : "Spool saved");
+    } catch (e: any) {
+      error(e.message);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function doMerge() {
-    setBusy(true); setErr("");
+    setBusy(true);
     try {
       await api(`/inventory/spools/${mergeCandidate.id}/add-roll`, {
         method: "POST",
@@ -324,9 +387,12 @@ function SpoolEditor({ spool, brands, materials, colors, onClose, onSaved }: any
         }),
       });
       setMergeCandidate(null);
-      onSaved();
-    } catch (e: any) { setErr(e.message); }
-    finally { setBusy(false); }
+      onSaved("Spools merged");
+    } catch (e: any) {
+      error(e.message);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -389,13 +455,15 @@ function SpoolEditor({ spool, brands, materials, colors, onClose, onSaved }: any
             <div><label>Batch Code</label><input value={f.batchCode || ""} onChange={(e) => setF({ ...f, batchCode: e.target.value })} /></div>
           </div>
           <div><label>Notes</label><textarea rows={2} value={f.notes || ""} onChange={(e) => setF({ ...f, notes: e.target.value })} /></div>
-          {err && <div className="error">{err}</div>}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
             <button className="btn btn-outline btn-sm" onClick={onClose}>Cancel</button>
-            <button className="btn" disabled={busy} onClick={save}>{busy ? "Saving…" : "Save"}</button>
+            <button className="btn" disabled={busy} onClick={save}>
+              {busy ? <><span className="btn-spinner" /> Saving…</> : "Save"}
+            </button>
           </div>
         </div>
       </div>
+
       {mergeCandidate && (
         <div className="modal-bg" style={{ zIndex: 110 }} onClick={() => setMergeCandidate(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
@@ -421,7 +489,9 @@ function SpoolEditor({ spool, brands, materials, colors, onClose, onSaved }: any
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", flexWrap: "wrap" }}>
               <button className="btn btn-outline btn-sm" onClick={() => setMergeCandidate(null)}>Cancel</button>
               <button className="btn btn-outline btn-sm" onClick={() => { setMergeCandidate(null); actuallySave(); }}>Create New Spool</button>
-              <button className="btn" disabled={busy} onClick={doMerge}>{busy ? "Merging…" : "Merge into Existing"}</button>
+              <button className="btn" disabled={busy} onClick={doMerge}>
+                {busy ? <><span className="btn-spinner" /> Merging…</> : "Merge into Existing"}
+              </button>
             </div>
           </div>
         </div>
@@ -431,22 +501,31 @@ function SpoolEditor({ spool, brands, materials, colors, onClose, onSaved }: any
 }
 
 function AdjustModal({ spool, onClose, onSaved }: any) {
+  const { error } = useToast();
   const [delta, setDelta] = useState(0);
   const [reason, setReason] = useState("MANUAL_ADJUST");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+
   async function save() {
     setBusy(true);
     try {
       await api(`/inventory/spools/${spool.id}/adjust`, { method: "POST", body: JSON.stringify({ deltaGrams: delta, reason, note }) });
       onSaved();
-    } finally { setBusy(false); }
+    } catch (e: any) {
+      error("Failed: " + e.message);
+    } finally {
+      setBusy(false);
+    }
   }
+
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>Adjust Stock</h3>
-        <p style={{ color: "var(--text-muted)", marginBottom: "1rem" }}>{spool.brand?.name} {spool.material?.name} {spool.color?.name} — currently {spool.remainingGrams}g</p>
+        <p style={{ color: "var(--text-muted)", marginBottom: "1rem" }}>
+          {spool.brand?.name} {spool.material?.name} {spool.color?.name} — currently {spool.remainingGrams}g
+        </p>
         <div className="form">
           <div>
             <label>Delta (negative to subtract)</label>
@@ -465,7 +544,9 @@ function AdjustModal({ spool, onClose, onSaved }: any) {
           <div><label>Note</label><input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" /></div>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
             <button className="btn btn-outline btn-sm" onClick={onClose}>Cancel</button>
-            <button className="btn" disabled={busy || delta === 0} onClick={save}>{busy ? "Saving…" : "Apply"}</button>
+            <button className="btn" disabled={busy || delta === 0} onClick={save}>
+              {busy ? <><span className="btn-spinner" /> Applying…</> : "Apply"}
+            </button>
           </div>
         </div>
       </div>
@@ -475,6 +556,8 @@ function AdjustModal({ spool, onClose, onSaved }: any) {
 
 // ─── Pricing + Thresholds ─────────────────────────────
 function PricingTab() {
+  const { success, error } = useToast();
+  const confirm = useConfirm();
   const [combos, setCombos] = useState<any[]>([]);
   const [materials, setMaterials] = useState<any[]>([]);
   const [colors, setColors] = useState<any[]>([]);
@@ -494,7 +577,8 @@ function PricingTab() {
     const msg = refreshExisting
       ? "Scan all spools and REFRESH every combo's list price to the highest cost/kg? This will overwrite prices you've manually set."
       : "Scan all spools and create missing combos? Existing prices stay untouched.";
-    if (!confirm(msg)) return;
+    const ok = await confirm({ title: "Auto-Calculate Prices?", message: msg, confirmLabel: "Calculate", variant: "primary" });
+    if (!ok) return;
     setAutoBusy(true);
     try {
       const r = await api("/inventory/material-colors/auto-price", {
@@ -505,8 +589,10 @@ function PricingTab() {
       await load();
       setTimeout(() => setAutoResult(null), 5000);
     } catch (e: any) {
-      alert("Failed: " + e.message);
-    } finally { setAutoBusy(false); }
+      error("Failed: " + e.message);
+    } finally {
+      setAutoBusy(false);
+    }
   }
 
   async function save(row: any) {
@@ -516,14 +602,26 @@ function PricingTab() {
       listPriceKgCents: +row.listPriceKgCents,
       lowStockGrams: +row.lowStockGrams,
     };
-    await api("/inventory/material-colors", { method: "POST", body: JSON.stringify(body) });
-    setEditing(null);
-    load();
+    try {
+      await api("/inventory/material-colors", { method: "POST", body: JSON.stringify(body) });
+      setEditing(null);
+      load();
+      success(row._isNew ? "Combo added" : "Combo saved");
+    } catch (e: any) {
+      error(e.message);
+    }
   }
+
   async function del(id: string) {
-    if (!confirm("Delete this pricing rule?")) return;
-    await api(`/inventory/material-colors/${id}`, { method: "DELETE" });
-    load();
+    const ok = await confirm({ title: "Delete this pricing rule?", variant: "danger" });
+    if (!ok) return;
+    try {
+      await api(`/inventory/material-colors/${id}`, { method: "DELETE" });
+      load();
+      success("Pricing rule deleted");
+    } catch (e: any) {
+      error(e.message);
+    }
   }
 
   return (
@@ -536,7 +634,7 @@ function PricingTab() {
             Also refresh existing
           </label>
           <button className="btn btn-outline" disabled={autoBusy} onClick={autoCalculate} title="Scan spools, create missing combos from highest cost/kg">
-            {autoBusy ? "Calculating…" : "⚡ Auto-Calculate"}
+            {autoBusy ? <><span className="btn-spinner" /> Calculating…</> : "⚡ Auto-Calculate"}
           </button>
           <button className="btn" onClick={() => setEditing({ _isNew: true, listPriceKgCents: 2500, lowStockGrams: 500 })}>+ Add Combo</button>
         </div>
@@ -547,7 +645,7 @@ function PricingTab() {
         </div>
       )}
       <div className="help" style={{ marginBottom: "1rem" }}>
-        List price is what customers see in quotes. Low-stock threshold triggers alerts when total drops below it. Click <strong>Auto-Calculate</strong> to scan your spools and create missing combos using the highest cost/kg. Nylon/TPU/PU default to 200g alert threshold, everything else to 500g.
+        List price is what customers see in quotes. Low-stock threshold triggers alerts when total drops below it. Click <strong>Auto-Calculate</strong> to scan your spools and create missing combos using the highest cost/kg.
       </div>
       {combos.length === 0 ? (
         <div className="empty"><p>No pricing rules yet. Add combinations of materials and colors with their list prices.</p></div>
@@ -556,7 +654,7 @@ function PricingTab() {
           <thead><tr><th>Material</th><th>Color</th><th>List Price (€/kg)</th><th>Low Stock Alert</th><th></th></tr></thead>
           <tbody>
             {combos.map((c) => (
-              <tr key={c.id}>
+              <tr key={c.id} className="clickable-row" onClick={() => setEditing(c)}>
                 <td><strong>{c.material.name}</strong></td>
                 <td>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
@@ -566,7 +664,7 @@ function PricingTab() {
                 </td>
                 <td>{fmtMoney(c.listPriceKgCents)}</td>
                 <td>{c.lowStockGrams}g</td>
-                <td style={{ textAlign: "right" }}>
+                <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
                   <button className="btn btn-sm btn-outline" onClick={() => setEditing(c)}>Edit</button>{" "}
                   <button className="btn btn-sm btn-danger" onClick={() => del(c.id)}>×</button>
                 </td>
@@ -619,18 +717,30 @@ function PricingTab() {
 
 // ─── Brands ───────────────────────────────────────────
 function BrandsTab() {
+  const { success, error } = useToast();
   const [brands, setBrands] = useState<any[]>([]);
   const [editing, setEditing] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+
   async function load() { setBrands(await api("/inventory/brands").catch(() => [])); }
   useEffect(() => { load(); }, []);
 
   async function save(row: any) {
-    const body = { name: row.name, notes: row.notes || null };
-    if (row.id) await api(`/inventory/brands/${row.id}`, { method: "PUT", body: JSON.stringify(body) });
-    else await api("/inventory/brands", { method: "POST", body: JSON.stringify(body) });
-    setEditing(null);
-    load();
+    setBusy(true);
+    try {
+      const body = { name: row.name, notes: row.notes || null };
+      if (row.id) await api(`/inventory/brands/${row.id}`, { method: "PUT", body: JSON.stringify(body) });
+      else await api("/inventory/brands", { method: "POST", body: JSON.stringify(body) });
+      setEditing(null);
+      load();
+      success(row.id ? "Brand saved" : "Brand added");
+    } catch (e: any) {
+      error(e.message);
+    } finally {
+      setBusy(false);
+    }
   }
+
   return (
     <div className="panel">
       <div className="panel-head">
@@ -641,10 +751,12 @@ function BrandsTab() {
         <thead><tr><th>Name</th><th>Notes</th><th></th></tr></thead>
         <tbody>
           {brands.map((b) => (
-            <tr key={b.id}>
+            <tr key={b.id} className="clickable-row" onClick={() => setEditing(b)}>
               <td><strong>{b.name}</strong></td>
               <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{b.notes || "—"}</td>
-              <td style={{ textAlign: "right" }}><button className="btn btn-sm btn-outline" onClick={() => setEditing(b)}>Edit</button></td>
+              <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
+                <button className="btn btn-sm btn-outline" onClick={() => setEditing(b)}>Edit</button>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -658,7 +770,9 @@ function BrandsTab() {
               <div><label>Notes</label><textarea value={editing.notes || ""} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></div>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
                 <button className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Cancel</button>
-                <button className="btn" onClick={() => save(editing)}>Save</button>
+                <button className="btn" disabled={busy} onClick={() => save(editing)}>
+                  {busy ? <><span className="btn-spinner" /> Saving…</> : "Save"}
+                </button>
               </div>
             </div>
           </div>
@@ -670,27 +784,39 @@ function BrandsTab() {
 
 // ─── Materials ────────────────────────────────────────
 function MaterialsTab() {
+  const { success, error } = useToast();
   const [materials, setMaterials] = useState<any[]>([]);
   const [editing, setEditing] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+
   async function load() { setMaterials(await api("/inventory/materials").catch(() => [])); }
   useEffect(() => { load(); }, []);
 
   async function save(m: any) {
-    const body = {
-      name: m.name,
-      densityGcm3: +m.densityGcm3,
-      printTempC: m.printTempC ? +m.printTempC : null,
-      bedTempC: m.bedTempC ? +m.bedTempC : null,
-      abrasive: !!m.abrasive,
-      notes: m.notes || null,
-      description: m.description || null, // ← PATCHED
-      active: m.active !== false,
-    };
-    if (m.id) await api(`/inventory/materials/${m.id}`, { method: "PUT", body: JSON.stringify(body) });
-    else await api("/inventory/materials", { method: "POST", body: JSON.stringify(body) });
-    setEditing(null);
-    load();
+    setBusy(true);
+    try {
+      const body = {
+        name: m.name,
+        densityGcm3: +m.densityGcm3,
+        printTempC: m.printTempC ? +m.printTempC : null,
+        bedTempC: m.bedTempC ? +m.bedTempC : null,
+        abrasive: !!m.abrasive,
+        notes: m.notes || null,
+        description: m.description || null,
+        active: m.active !== false,
+      };
+      if (m.id) await api(`/inventory/materials/${m.id}`, { method: "PUT", body: JSON.stringify(body) });
+      else await api("/inventory/materials", { method: "POST", body: JSON.stringify(body) });
+      setEditing(null);
+      load();
+      success(m.id ? "Material saved" : "Material added");
+    } catch (e: any) {
+      error(e.message);
+    } finally {
+      setBusy(false);
+    }
   }
+
   return (
     <div className="panel">
       <div className="panel-head">
@@ -701,7 +827,7 @@ function MaterialsTab() {
         <thead><tr><th>Name</th><th>Density</th><th>Temps</th><th>Notes</th><th></th></tr></thead>
         <tbody>
           {materials.map((m) => (
-            <tr key={m.id} style={{ opacity: m.active ? 1 : 0.5 }}>
+            <tr key={m.id} style={{ opacity: m.active ? 1 : 0.5 }} className="clickable-row" onClick={() => setEditing(m)}>
               <td>
                 <strong>{m.name}</strong>
                 {m.abrasive && <span className="badge badge-warning" style={{ marginLeft: "0.5rem" }}>Abrasive</span>}
@@ -710,7 +836,9 @@ function MaterialsTab() {
               <td>{m.densityGcm3} g/cm³</td>
               <td style={{ fontSize: "0.85rem" }}>{m.printTempC || "?"}°C / {m.bedTempC || "?"}°C</td>
               <td style={{ color: "var(--text-muted)", fontSize: "0.85rem", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.notes || "—"}</td>
-              <td style={{ textAlign: "right" }}><button className="btn btn-sm btn-outline" onClick={() => setEditing(m)}>Edit</button></td>
+              <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
+                <button className="btn btn-sm btn-outline" onClick={() => setEditing(m)}>Edit</button>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -734,28 +862,26 @@ function MaterialsTab() {
                 <div><label>Print Temp (°C)</label><input type="number" value={editing.printTempC || ""} onChange={(e) => setEditing({ ...editing, printTempC: e.target.value })} /></div>
                 <div><label>Bed Temp (°C)</label><input type="number" value={editing.bedTempC || ""} onChange={(e) => setEditing({ ...editing, bedTempC: e.target.value })} /></div>
               </div>
-              
-              {/* PATCHED: Customer Description field */}
               <div>
                 <label>Customer Description</label>
                 <textarea
                   rows={3}
                   value={editing.description || ""}
                   onChange={(e) => setEditing({ ...editing, description: e.target.value })}
-                  placeholder="Shown on the public quote page when a customer picks this material. Describe its strengths and typical uses."
+                  placeholder="Shown on the public quote page when a customer picks this material."
                 />
                 <div className="help">This text appears as a blue info box on the quote form.</div>
               </div>
-
               <div><label>Notes (admin)</label><textarea value={editing.notes || ""} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></div>
-              
               <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 <input type="checkbox" checked={editing.active !== false} onChange={(e) => setEditing({ ...editing, active: e.target.checked })} style={{ width: "auto" }} />
                 Visible in selection menus
               </label>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
                 <button className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Cancel</button>
-                <button className="btn" onClick={() => save(editing)}>Save</button>
+                <button className="btn" disabled={busy} onClick={() => save(editing)}>
+                  {busy ? <><span className="btn-spinner" /> Saving…</> : "Save"}
+                </button>
               </div>
             </div>
           </div>
@@ -767,18 +893,30 @@ function MaterialsTab() {
 
 // ─── Colors ───────────────────────────────────────────
 function ColorsTab() {
+  const { success, error } = useToast();
   const [colors, setColors] = useState<any[]>([]);
   const [editing, setEditing] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+
   async function load() { setColors(await api("/inventory/colors").catch(() => [])); }
   useEffect(() => { load(); }, []);
 
   async function save(c: any) {
-    const body = { name: c.name, hex: c.hex };
-    if (c.id) await api(`/inventory/colors/${c.id}`, { method: "PUT", body: JSON.stringify(body) });
-    else await api("/inventory/colors", { method: "POST", body: JSON.stringify(body) });
-    setEditing(null);
-    load();
+    setBusy(true);
+    try {
+      const body = { name: c.name, hex: c.hex };
+      if (c.id) await api(`/inventory/colors/${c.id}`, { method: "PUT", body: JSON.stringify(body) });
+      else await api("/inventory/colors", { method: "POST", body: JSON.stringify(body) });
+      setEditing(null);
+      load();
+      success(c.id ? "Color saved" : "Color added");
+    } catch (e: any) {
+      error(e.message);
+    } finally {
+      setBusy(false);
+    }
   }
+
   return (
     <div className="panel">
       <div className="panel-head">
@@ -811,7 +949,9 @@ function ColorsTab() {
               </div>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
                 <button className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Cancel</button>
-                <button className="btn" onClick={() => save(editing)}>Save</button>
+                <button className="btn" disabled={busy} onClick={() => save(editing)}>
+                  {busy ? <><span className="btn-spinner" /> Saving…</> : "Save"}
+                </button>
               </div>
             </div>
           </div>
@@ -824,28 +964,39 @@ function ColorsTab() {
 // ─── Movements ────────────────────────────────────────
 function MovementsTab() {
   const [items, setItems] = useState<any[]>([]);
-  useEffect(() => { api("/inventory/movements?limit=100").then(setItems).catch(() => []); }, []);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api("/inventory/movements?limit=100").then((data) => { setItems(data); setLoading(false); }).catch(() => setLoading(false));
+  }, []);
 
   return (
     <div className="panel">
       <div className="panel-head"><h3>Recent Movement History</h3></div>
-      <table>
-        <thead><tr><th>Date</th><th>Spool</th><th>Type</th><th>Delta</th><th>Note</th></tr></thead>
-        <tbody>
-          {items.map((m) => (
-            <tr key={m.id}>
-              <td style={{ whiteSpace: "nowrap", fontSize: "0.82rem" }}>{fmtDate(m.createdAt)}</td>
-              <td style={{ fontSize: "0.85rem" }}>
-                <div style={{ fontWeight: 600 }}>{m.spool.brand.name} {m.spool.material.name}</div>
-                <div style={{ color: "var(--text-muted)" }}>{m.spool.color.name} (Batch: {m.spool.batchCode || "—"})</div>
-              </td>
-              <td><span className={`badge ${m.reason === "PRINT_USAGE" ? "badge-primary" : "badge-muted"}`}>{m.reason}</span></td>
-              <td style={{ fontWeight: 700, color: m.deltaGrams < 0 ? "#ef4444" : "#10b981" }}>{m.deltaGrams > 0 ? "+" : ""}{m.deltaGrams}g</td>
-              <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{m.note || "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {loading ? (
+        <table>
+          <thead><tr><th>Date</th><th>Spool</th><th>Type</th><th>Delta</th><th>Note</th></tr></thead>
+          <tbody><TableSkeleton rows={8} cols={5} /></tbody>
+        </table>
+      ) : (
+        <table>
+          <thead><tr><th>Date</th><th>Spool</th><th>Type</th><th>Delta</th><th>Note</th></tr></thead>
+          <tbody>
+            {items.map((m) => (
+              <tr key={m.id}>
+                <td style={{ whiteSpace: "nowrap", fontSize: "0.82rem" }}>{fmtDate(m.createdAt)}</td>
+                <td style={{ fontSize: "0.85rem" }}>
+                  <div style={{ fontWeight: 600 }}>{m.spool.brand.name} {m.spool.material.name}</div>
+                  <div style={{ color: "var(--text-muted)" }}>{m.spool.color.name} (Batch: {m.spool.batchCode || "—"})</div>
+                </td>
+                <td><span className={`badge ${m.reason === "PRINT_USAGE" ? "badge-primary" : "badge-muted"}`}>{m.reason}</span></td>
+                <td style={{ fontWeight: 700, color: m.deltaGrams < 0 ? "#ef4444" : "#10b981" }}>{m.deltaGrams > 0 ? "+" : ""}{m.deltaGrams}g</td>
+                <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{m.note || "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

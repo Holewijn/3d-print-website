@@ -2,6 +2,8 @@
 import { useEffect, useState } from "react";
 import Shell from "../../components/Shell";
 import { api } from "../../lib/api";
+import { useToast } from "../../components/Toast";
+import { useConfirm } from "../../components/ConfirmModal";
 
 const TABS = [
   { id: "general",   label: "General" },
@@ -20,13 +22,27 @@ export default function SettingsPage() {
   const [s, setS] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const { success, error } = useToast();
+  const confirm = useConfirm();
 
   useEffect(() => {
     api("/settings").then((r) => { setS(r); setLoading(false); }).catch(() => setLoading(false));
   }, []);
 
-  function set(key: string, value: any) { setS({ ...s, [key]: value }); }
+  useEffect(() => {
+    if (isDirty) {
+      window.onbeforeunload = () => "You have unsaved changes. Are you sure you want to leave?";
+    } else {
+      window.onbeforeunload = null;
+    }
+    return () => { window.onbeforeunload = null; };
+  }, [isDirty]);
+
+  function set(key: string, value: any) {
+    setS((prev) => ({ ...prev, [key]: value }));
+    setIsDirty(true);
+  }
 
   async function save(keys: string[]) {
     setSaving(true);
@@ -34,19 +50,36 @@ export default function SettingsPage() {
       for (const k of keys) {
         await api(`/settings/${k}`, { method: "PUT", body: JSON.stringify({ value: s[k] }) });
       }
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
-    } finally { setSaving(false); }
+      setIsDirty(false);
+      success("Settings saved");
+    } catch (e: any) {
+      error(e.message);
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (loading) return <Shell title="Settings"><p>Loading…</p></Shell>;
 
   const SaveBar = ({ keys }: { keys: string[] }) => (
     <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", marginTop: "1rem" }}>
-      <button className="btn" disabled={saving} onClick={() => save(keys)}>{saving ? "Saving…" : "Save Changes"}</button>
-      {saved && <span className="success-msg">✓ Saved</span>}
+      <button className="btn" disabled={saving} onClick={() => save(keys)}>
+        {saving && <div className="btn-spinner" />}
+        {saving ? "Saving…" : "Save Changes"}
+      </button>
     </div>
   );
+
+  const UnsavedBanner = ({ keys }: { keys: string[] }) =>
+    isDirty ? (
+      <div className="unsaved-banner">
+        <span>Unsaved changes</span>
+        <button onClick={() => save(keys)} disabled={saving}>
+          {saving && <div className="btn-spinner" />}
+          Save now
+        </button>
+      </div>
+    ) : null;
 
   return (
     <Shell title="Settings" subtitle="Configure your website">
@@ -64,6 +97,7 @@ export default function SettingsPage() {
 
         {tab === "general" && (
           <div className="form">
+            <UnsavedBanner keys={["site.title", "site.logoText", "site.logoUrl", "site.faviconUrl", "site.footer"]} />
             <div><label>Site Title</label><input value={s["site.title"] || ""} onChange={(e) => set("site.title", e.target.value)} /></div>
             <div><label>Logo Text</label><input value={s["site.logoText"] || ""} onChange={(e) => set("site.logoText", e.target.value)} /></div>
             <div><label>Logo URL</label><input value={s["site.logoUrl"] || ""} onChange={(e) => set("site.logoUrl", e.target.value)} /></div>
@@ -75,6 +109,7 @@ export default function SettingsPage() {
 
         {tab === "company" && (
           <div className="form">
+            <UnsavedBanner keys={["company.name","company.addressLine1","company.addressLine2","company.postalCode","company.city","company.country","company.email","company.phone","company.website","company.logoUrl","company.kvk","company.btw","company.bank","company.iban","company.bic"]} />
             <div className="help" style={{ marginBottom: "0.5rem", padding: "0.75rem", background: "var(--bg-elev-2)", borderRadius: 8 }}>
               These details appear on every invoice and packing slip. Required for Dutch/EU tax compliance.
             </div>
@@ -107,6 +142,7 @@ export default function SettingsPage() {
 
         {tab === "invoicing" && (
           <div className="form">
+            <UnsavedBanner keys={["invoice.vatRate","invoice.paymentTerms","invoice.footerNote","invoice.autoEmail"]} />
             <div><label>VAT Rate (%)</label><input type="number" step={0.1} value={s["invoice.vatRate"] ?? 21} onChange={(e) => set("invoice.vatRate", +e.target.value)} /><div className="help">Standard NL rate is 21%. 9% for reduced rate. 0% for exports / VAT-exempt.</div></div>
             <div><label>Payment Terms (printed on invoice)</label><textarea rows={2} value={s["invoice.paymentTerms"] || ""} onChange={(e) => set("invoice.paymentTerms", e.target.value)} placeholder="Payment within 14 days of invoice date." /></div>
             <div><label>Invoice Footer Note (optional)</label><textarea rows={2} value={s["invoice.footerNote"] || ""} onChange={(e) => set("invoice.footerNote", e.target.value)} placeholder="Thank you for your business!" /></div>
@@ -122,6 +158,7 @@ export default function SettingsPage() {
 
         {tab === "smtp" && (
           <div className="form">
+            <UnsavedBanner keys={["smtp.host","smtp.port","smtp.user","smtp.pass","smtp.from","smtp.secure"]} />
             <div className="help" style={{ marginBottom: "0.5rem", padding: "0.75rem", background: "var(--bg-elev-2)", borderRadius: 8 }}>
               SMTP settings let the system email invoices to customers automatically. Use your hosting provider's SMTP details, or a service like Mailgun / SendGrid / Postmark.
             </div>
@@ -146,6 +183,7 @@ export default function SettingsPage() {
 
         {tab === "seo" && (
           <div className="form">
+            <UnsavedBanner keys={["seo.defaultTitle","seo.defaultDesc"]} />
             <div><label>Default SEO Title</label><input value={s["seo.defaultTitle"] || ""} onChange={(e) => set("seo.defaultTitle", e.target.value)} /></div>
             <div><label>Default Description</label><textarea rows={3} value={s["seo.defaultDesc"] || ""} onChange={(e) => set("seo.defaultDesc", e.target.value)} /></div>
             <SaveBar keys={["seo.defaultTitle","seo.defaultDesc"]} />
@@ -154,17 +192,18 @@ export default function SettingsPage() {
 
         {tab === "pricing" && (
           <div className="form">
+            <UnsavedBanner keys={["pricing.marginPct","pricing.setupFeeCents","pricing.defaultMachineCostHourCents","pricing.minOrderCents"]} />
             <div><label>Profit Margin (%)</label><input type="number" value={s["pricing.marginPct"] ?? 25} onChange={(e) => set("pricing.marginPct", +e.target.value)} /></div>
-                        <div><label>Setup Fee (cents)</label><input type="number" value={s["pricing.setupFeeCents"] ?? 0} onChange={(e) => set("pricing.setupFeeCents", +e.target.value)} /><div className="help">Fixed fee added to every quote (e.g. 250 = €2.50). Set to 0 to disable.</div></div>
+            <div><label>Setup Fee (cents)</label><input type="number" value={s["pricing.setupFeeCents"] ?? 0} onChange={(e) => set("pricing.setupFeeCents", +e.target.value)} /><div className="help">Fixed fee added to every quote (e.g. 250 = €2.50). Set to 0 to disable.</div></div>
             <div><label>Default Machine Cost (cents/hour)</label><input type="number" value={s["pricing.defaultMachineCostHourCents"] ?? 200} onChange={(e) => set("pricing.defaultMachineCostHourCents", +e.target.value)} /></div>
             <div><label>Minimum Order (cents)</label><input type="number" value={s["pricing.minOrderCents"] ?? 500} onChange={(e) => set("pricing.minOrderCents", +e.target.value)} /></div>
             <SaveBar keys={["pricing.marginPct","pricing.setupFeeCents","pricing.defaultMachineCostHourCents","pricing.minOrderCents"]} />
           </div>
         )}
 
-
         {tab === "inventory" && (
           <div className="form">
+            <UnsavedBanner keys={["inventory.deductionMode", "alerts.email"]} />
             <div className="help" style={{ padding: "0.75rem", background: "var(--bg-elev-2)", borderRadius: 8 }}>
               Settings for filament inventory, Moonraker deduction, and low-stock alerts.
             </div>
@@ -187,6 +226,7 @@ export default function SettingsPage() {
 
         {tab === "energy" && (
           <div className="form">
+            <UnsavedBanner keys={["energy.provider","energy.priceKwh","energy.zonneplanKey"]} />
             <div><label>Provider</label>
               <select value={s["energy.provider"] || "manual"} onChange={(e) => set("energy.provider", e.target.value)}>
                 <option value="manual">Manual</option>
@@ -201,6 +241,7 @@ export default function SettingsPage() {
 
         {tab === "mollie" && (
           <div className="form">
+            <UnsavedBanner keys={["mollie.apiKey"]} />
             <div><label>Mollie API Key</label><input type="password" value={s["mollie.apiKey"] || ""} onChange={(e) => set("mollie.apiKey", e.target.value)} placeholder="test_… or live_…" /></div>
             <div><label>Webhook URL (read-only)</label><input readOnly value={`${typeof window !== "undefined" ? window.location.origin : ""}/api/payments/webhook`} /></div>
             <SaveBar keys={["mollie.apiKey"]} />
